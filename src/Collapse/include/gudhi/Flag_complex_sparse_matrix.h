@@ -18,6 +18,13 @@
 #include <boost/functional/hash.hpp>
 #include <boost/graph/adjacency_list.hpp>
 
+#include <range/v3/view/facade.hpp>
+#include <range/v3/view/common.hpp>
+#include <range/v3/view/filter.hpp>
+#include <range/v3/view/transform.hpp>
+#include <range/v3/view/set_algorithm.hpp>
+#include <range/v3/algorithm/set_algorithm.hpp>
+
 #include <Eigen/Sparse>
 
 #ifdef GUDHI_USE_TBB
@@ -73,6 +80,19 @@ class Flag_complex_sparse_matrix {
   // (Eigen::SparseMatrix<Edge_index, Eigen::RowMajor> has slow insertions)
   using Sparse_vector = Eigen::SparseVector<Edge_index>;
   using Sparse_row_matrix = std::vector<Sparse_vector>;
+
+  // Range interface for Eigen
+  class Sparse_vector_range : public ranges::view_facade<Sparse_vector_range> {
+    private:
+      friend ranges::range_access;
+      typename Sparse_vector::InnerIterator it;
+      void next() { ++it; }
+      bool equal(ranges::default_sentinel_t) const { return !it; }
+      std::pair<IVertex, Edge_index> read() const { return {it.index(), it.value()}; }
+    public:
+      Sparse_vector_range() = default;
+      explicit Sparse_vector_range(Sparse_vector const&v) : it(v) {}
+  };
 
   // A range of row indices
   using IVertex_vector = std::vector<IVertex>;
@@ -132,8 +152,7 @@ class Flag_complex_sparse_matrix {
       for (auto rw_c : common_neighbours) {
         auto neighbours_c = neighbours_row_index(rw_c, true);
         // If neighbours_c contains the common neighbours.
-        if (std::includes(neighbours_c.begin(), neighbours_c.end(),
-                          common_neighbours.begin(), common_neighbours.end()))
+        if (ranges::includes(neighbours_c, common_neighbours))
           return true;
       }
     return false;
@@ -204,44 +223,24 @@ class Flag_complex_sparse_matrix {
   }
 
   // Returns list of neighbors of a particular vertex.
-  IVertex_vector neighbours_row_index(IVertex rw_u, bool closed) const
+  auto neighbours_row_index(IVertex rw_u, bool closed) const
   {
-    IVertex_vector neighbors;
-    neighbors.reserve(sparse_row_adjacency_matrix_[rw_u].nonZeros()); // too much, but who cares
-#ifdef DEBUG_TRACES
-    std::cout << "The neighbours of the vertex: " << row_to_vertex_[rw_u] << " are. " << std::endl;
-#endif  // DEBUG_TRACES
-    // Iterate over the neighbors
-    for (typename Sparse_vector::InnerIterator it(sparse_row_adjacency_matrix_[rw_u]); it; ++it) {
-      IVertex rw_v = it.index();
-      if (!closed && rw_u == rw_v) continue;
-      Edge_index ei;
-      // If the vertex v is not dominated and the edge {u,v} is still in the matrix
-      if ((closed && rw_u == rw_v) ||
-          (ei = it.value()) <= current_backward ||
-          critical_edge_indicator_[ei]) {
-        neighbors.push_back(rw_v);
-#ifdef DEBUG_TRACES
-        std::cout << row_to_vertex_[rw_v] << ", " ;
-#endif  // DEBUG_TRACES
-      }
-    }
-#ifdef DEBUG_TRACES
-    std::cout << std::endl;
-#endif  // DEBUG_TRACES
-    return neighbors;
+    return Sparse_vector_range(sparse_row_adjacency_matrix_[rw_u])
+      | ranges::view::filter([=](auto const&e){
+            if (e.first == rw_u) return closed;
+            return e.second <= current_backward || critical_edge_indicator_[e.second];
+          })
+      | ranges::view::transform([](auto const&e){return e.first;});
   }
 
   // Returns the list of open neighbours of the edge :{u,v}.
-  IVertex_vector open_common_neighbours_row_index(IVertex rw_u, IVertex rw_v) const
+  auto open_common_neighbours_row_index(IVertex rw_u, IVertex rw_v) const
   {
-    IVertex_vector non_zero_indices_u = neighbours_row_index(rw_u, false);
-    IVertex_vector non_zero_indices_v = neighbours_row_index(rw_v, false);
+    auto non_zero_indices_u = neighbours_row_index(rw_u, false);
+    auto non_zero_indices_v = neighbours_row_index(rw_v, false);
+    auto inter = ranges::view::set_intersection(non_zero_indices_u, non_zero_indices_v) | ranges::view::common;
     IVertex_vector common;
-    common.reserve(std::min(non_zero_indices_u.size(), non_zero_indices_v.size()));
-    std::set_intersection(non_zero_indices_u.begin(), non_zero_indices_u.end(), non_zero_indices_v.begin(),
-                          non_zero_indices_v.end(), std::back_inserter(common));
-
+    common.insert(common.end(), inter.begin(), inter.end());
     return common;
   }
 
