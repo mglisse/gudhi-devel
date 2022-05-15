@@ -28,5 +28,5 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v3
         with:
-          name: wheel $GITHUB_REF_NAME
+          name: wheel ${{ github.ref_name }}
           path: build_310/src/python/dist/*.whl
