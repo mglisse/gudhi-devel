@@ -23,15 +23,16 @@ __copyright__ = "Copyright (C) 2016 Inria"
 __license__ = "MIT"
 
 cdef extern from "Cubical_complex_interface.h" namespace "Gudhi":
-    cdef cppclass Periodic_cubical_complex_base_interface "Gudhi::Cubical_complex::Cubical_complex_interface<Gudhi::cubical_complex::Bitmap_cubical_complex_periodic_boundary_conditions_base<double>>":
-        Periodic_cubical_complex_base_interface(vector[unsigned] dimensions, vector[double] top_dimensional_cells, vector[bool] periodic_dimensions) nogil
-        Periodic_cubical_complex_base_interface(string perseus_file) nogil
+    cdef cppclass Periodic_cubical_complex_interface "Gudhi::Cubical_complex::Cubical_complex_interface<Gudhi::cubical_complex::Bitmap_cubical_complex_periodic_boundary_conditions_base<double>>":
+        Periodic_cubical_complex_interface(vector[unsigned] dimensions, vector[double] top_dimensional_cells, vector[bool] periodic_dimensions) nogil
+        Periodic_cubical_complex_interface(string perseus_file) nogil
+        vector[double] data() nogil
         int num_simplices() nogil
         int dimension() nogil
 
 cdef extern from "Persistent_cohomology_interface.h" namespace "Gudhi":
     cdef cppclass Periodic_cubical_complex_persistence_interface "Gudhi::Persistent_cohomology_interface<Gudhi::Cubical_complex::Cubical_complex_interface<Gudhi::cubical_complex::Bitmap_cubical_complex_periodic_boundary_conditions_base<double>>>":
-        Periodic_cubical_complex_persistence_interface(Periodic_cubical_complex_base_interface * st, bool persistence_dim_max) nogil
+        Periodic_cubical_complex_persistence_interface(Periodic_cubical_complex_interface * st, bool persistence_dim_max) nogil
         void compute_persistence(int homology_coeff_field, double min_persistence) nogil except +
         vector[pair[int, pair[double, double]]] get_persistence() nogil
         vector[vector[int]] cofaces_of_cubical_persistence_pairs() nogil
@@ -45,7 +46,7 @@ cdef class PeriodicCubicalComplex:
     in computational mathematics (specially rigorous numerics) and image
     analysis.
     """
-    cdef Periodic_cubical_complex_base_interface * thisptr
+    cdef Periodic_cubical_complex_interface * thisptr
 
     cdef Periodic_cubical_complex_persistence_interface * pcohptr
 
@@ -104,11 +105,11 @@ cdef class PeriodicCubicalComplex:
 
     def _construct_from_cells(self, vector[unsigned] dimensions, vector[double] top_dimensional_cells, vector[bool] periodic_dimensions):
         with nogil:
-            self.thisptr = new Periodic_cubical_complex_base_interface(dimensions, top_dimensional_cells, periodic_dimensions)
+            self.thisptr = new Periodic_cubical_complex_interface(dimensions, top_dimensional_cells, periodic_dimensions)
 
     def _construct_from_file(self, string filename):
         with nogil:
-            self.thisptr = new Periodic_cubical_complex_base_interface(filename)
+            self.thisptr = new Periodic_cubical_complex_interface(filename)
 
     def __dealloc__(self):
         if self.thisptr != NULL:

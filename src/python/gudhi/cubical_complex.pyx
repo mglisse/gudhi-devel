@@ -10,31 +10,34 @@
 #   - YYYY/MM Author: Description of the modification
 
 from __future__ import print_function
+import errno
+import os
+import sys
+import numpy as np
+
 from cython cimport numeric
+from cpython.ref cimport Py_INCREF
 from libcpp.vector cimport vector
 from libcpp.utility cimport pair
 from libcpp.string cimport string
 from libcpp cimport bool
-import errno
-import os
-import sys
-
-import numpy as np
+cimport numpy as np
 
 __author__ = "Vincent Rouvreau"
 __copyright__ = "Copyright (C) 2016 Inria"
 __license__ = "MIT"
 
 cdef extern from "Cubical_complex_interface.h" namespace "Gudhi":
-    cdef cppclass Bitmap_cubical_complex_base_interface "Gudhi::Cubical_complex::Cubical_complex_interface<>":
-        Bitmap_cubical_complex_base_interface(vector[unsigned] dimensions, vector[double] top_dimensional_cells) nogil
-        Bitmap_cubical_complex_base_interface(string perseus_file) nogil
+    cdef cppclass Bitmap_cubical_complex_interface "Gudhi::Cubical_complex::Cubical_complex_interface<>":
+        Bitmap_cubical_complex_interface(vector[unsigned] dimensions, vector[double] top_dimensional_cells) nogil
+        Bitmap_cubical_complex_interface(string perseus_file) nogil
+        vector[double] data
         int num_simplices() nogil
         int dimension() nogil
 
 cdef extern from "Persistent_cohomology_interface.h" namespace "Gudhi":
     cdef cppclass Cubical_complex_persistence_interface "Gudhi::Persistent_cohomology_interface<Gudhi::Cubical_complex::Cubical_complex_interface<>>":
-        Cubical_complex_persistence_interface(Bitmap_cubical_complex_base_interface * st, bool persistence_dim_max) nogil
+        Cubical_complex_persistence_interface(Bitmap_cubical_complex_interface * st, bool persistence_dim_max) nogil
         void compute_persistence(int homology_coeff_field, double min_persistence) nogil except+
         vector[pair[int, pair[double, double]]] get_persistence() nogil
         vector[vector[int]] cofaces_of_cubical_persistence_pairs() nogil
@@ -42,13 +45,16 @@ cdef extern from "Persistent_cohomology_interface.h" namespace "Gudhi":
         vector[int] persistent_betti_numbers(double from_value, double to_value) nogil
         vector[pair[double,double]] intervals_in_dimension(int dimension) nogil
 
+# Initialize NumPy. Is there really a risk that nothing has initialized it yet?
+np.import_array()
+
 # CubicalComplex python interface
 cdef class CubicalComplex:
     """The CubicalComplex is an example of a structured complex useful in
     computational mathematics (specially rigorous numerics) and image
     analysis.
     """
-    cdef Bitmap_cubical_complex_base_interface * thisptr
+    cdef Bitmap_cubical_complex_interface * thisptr
 
     cdef Cubical_complex_persistence_interface * pcohptr
 
@@ -103,11 +109,11 @@ cdef class CubicalComplex:
 
     def _construct_from_cells(self, vector[unsigned] dimensions, vector[double] top_dimensional_cells):
         with nogil:
-            self.thisptr = new Bitmap_cubical_complex_base_interface(dimensions, top_dimensional_cells)
+            self.thisptr = new Bitmap_cubical_complex_interface(dimensions, top_dimensional_cells)
 
     def _construct_from_file(self, string filename):
         with nogil:
-            self.thisptr = new Bitmap_cubical_complex_base_interface(filename)
+            self.thisptr = new Bitmap_cubical_complex_interface(filename)
 
     def __dealloc__(self):
         if self.thisptr != NULL:
@@ -138,6 +144,17 @@ cdef class CubicalComplex:
         :returns:  int -- the complex dimension.
         """
         return self.thisptr.dimension()
+
+    # Build a new wrapper for each call, or store it so we can return the same again?
+    def plouf(self):
+        cdef np.npy_intp dims[1]
+        dims[0] = self.thisptr.data.size()
+        ret = np.PyArray_SimpleNewFromData(1, dims, np.NPY_DOUBLE, self.thisptr.data.data())
+        Py_INCREF(self) # A reference is stolen on the next line
+        np.PyArray_SetBaseObject(ret, self)
+        # TODO: reshape
+        # flags: read-only?
+        return ret
 
     def compute_persistence(self, homology_coeff_field=11, min_persistence=0):
         """This function computes the persistence of the complex, so it can be
