@@ -10,7 +10,7 @@
 #include <chrono>
 
 int main(int argc, char**argv) {
-  typedef CGAL::Epick_d<CGAL::Dimension_tag<4> > K;
+  typedef CGAL::Epick_d<CGAL::Dimension_tag<2> > K;
   typedef typename K::Point_d Point_d;
 
   CGAL::Random rd(atoi(argv[2]));
@@ -22,8 +22,7 @@ int main(int argc, char**argv) {
   const int j = 0;
   std::vector<Point_d> points;
   for (int i = 0; i < n2; ++i)
-    points.push_back(Point_d(rd.get_double(-1., 1), rd.get_double(-1., 1),
-                             rd.get_double(-1., 1), rd.get_double(-1., 1)));
+    points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1));
 
   K k;
 
@@ -41,6 +40,7 @@ int main(int argc, char**argv) {
 
   std::vector<Point_d> results;
   std::vector<double> dists;
+#ifndef PROFIL
   auto time_start1 = std::chrono::system_clock::now();
   Gudhi::subsampling::choose_n_farthest_points1(dis, points, n1,
                                                j,
@@ -52,15 +52,18 @@ int main(int argc, char**argv) {
   for(int i=0;i<n1;++i) o << dists[i] << " -- " << results[i] << '\n';
   results.clear(); dists.clear();
   auto time_start2 = std::chrono::system_clock::now();
+#endif
   Gudhi::subsampling::choose_n_farthest_points(dis, points, n1,
                                                j,
                                                std::back_inserter(results),
                                                std::back_inserter(dists)
                                                );
+#ifndef PROFIL
   auto time_stop2 = std::chrono::system_clock::now();
   std::ofstream n("N");
   for(int i=0;i<n1;++i) n << dists[i] << " -- " << results[i] << '\n';
   std::cerr << "Time old " << std::chrono::duration_cast<std::chrono::milliseconds>((time_stop1 - time_start1)).count()
              << " vs new " << std::chrono::duration_cast<std::chrono::milliseconds>((time_stop2 - time_start2)).count() << '\n';
+#endif
   return 0;
 }

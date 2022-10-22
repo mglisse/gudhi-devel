@@ -144,6 +144,22 @@ void choose_n_farthest_points1(Distance dist,
     *dist_it++ = dist_to_L[curr_max_w];
   }
 }
+
+struct Landmark_info;
+struct Compare_landmark_radius {
+  std::vector<Landmark_info>* landmarks_p;
+  Compare_landmark_radius(std::vector<Landmark_info>* p): landmarks_p(p) {}
+  bool operator()(std::size_t, std::size_t) const;
+};
+typedef boost::heap::skew_heap<std::size_t, boost::heap::compare<Compare_landmark_radius>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>> radius_priority_ds;
+struct Landmark_info {
+  std::size_t far; double radius;
+  std::vector<std::size_t> voronoi;
+  std::set<std::size_t> neighbors; // Should we cache the distances here, above, and maybe elsewhere?
+  radius_priority_ds::handle_type position_in_queue;
+};
+inline bool Compare_landmark_radius::operator()(std::size_t a, std::size_t b)const{ return (*landmarks_p)[a].radius < (*landmarks_p)[b].radius; }
+
 template < typename Distance,
 typename Point_range,
 typename PointOutputIterator,
@@ -185,20 +201,7 @@ void choose_n_farthest_points(Distance dist_,
   //typedef boost::heap::skew_heap<std::size_t, boost::heap::compare<decltype(compare_landmark_radius)>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>> radius_priority_ds;
   //radius_priority_ds radius_priority(compare_landmark_radius);
 
-  struct Compare_landmark_radius;
-  typedef boost::heap::skew_heap<std::size_t, boost::heap::compare<Compare_landmark_radius>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>> radius_priority_ds;
-  struct Landmark_info {
-    std::size_t far; double radius;
-    std::vector<std::size_t> voronoi;
-    std::set<std::size_t> neighbors;
-    typename radius_priority_ds::handle_type position_in_queue;
-  };
   std::vector<Landmark_info> landmarks(nb_points);
-  struct Compare_landmark_radius {
-    std::vector<Landmark_info>* landmarks_p;
-    Compare_landmark_radius(std::vector<Landmark_info>* p): landmarks_p(p) {}
-    bool operator()(std::size_t a, std::size_t b)const{ return (*landmarks_p)[a].radius < (*landmarks_p)[b].radius; }
-  };
   radius_priority_ds radius_priority(&landmarks);
   auto compute_radius = [&](std::size_t i)
   {
