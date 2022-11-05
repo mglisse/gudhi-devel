@@ -237,7 +237,8 @@ void choose_n_farthest_points(Distance dist_,
     *output_it++ = input_pts[l];
     *dist_it++ = radius;
     std::unordered_set<std::size_t> l_neighbors;
-    auto handle_neighbor = [&](std::size_t ngb)
+    std::vector<std::size_t> modified_neighbors; // move outside the loop to recycle the allocation
+    auto handle_neighbor_voronoi = [&](std::size_t ngb)
     {
       auto& ngb_info = landmarks[ngb];
       auto it = std::remove_if(ngb_info.voronoi.begin(), ngb_info.voronoi.end(), [&](std::size_t w)
@@ -249,9 +250,17 @@ void choose_n_farthest_points(Distance dist_,
             }
             return false;
           });
-      bool modified = (it != ngb_info.voronoi.end());
-      ngb_info.voronoi.erase(it, ngb_info.voronoi.end());
-      if (modified) { // alwawys true for ngb==l_parent
+      if (it != ngb_info.voronoi.end()) { // modified, always true for ngb==l_parent
+        ngb_info.voronoi.erase(it, ngb_info.voronoi.end());
+        modified_neighbors.push_back(ngb);
+        return true;
+      } else {
+        return false;
+      }
+    };
+    auto handle_neighbor_neighbors = [&](std::size_t ngb)
+    {
+        auto& ngb_info = landmarks[ngb];
         if (ngb_info.voronoi.empty()) { // Special-casing this does not seem very useful
           // ?? ngb_info.voronoi.shrink_to_fit();
           radius_priority.erase(ngb_info.position_in_queue);
@@ -270,7 +279,9 @@ void choose_n_farthest_points(Distance dist_,
           std::vector<std::size_t> to_remove;
           for (std::size_t near : ngb_info.neighbors) {
             // Clean-up, neighbors is lazily updated when we visit it
-            if (landmarks[near].voronoi.size() != 0 && dist(ngb, near) <= 3 * radius) // could be tighter using the radius of ngb and near? r1+2*r2, also magically handles the empty voronoi case.
+            double r = (ngb == l_parent) ? radius : ngb_info.radius; // careful not to use the new reduced radius which excludes l before we have listed the new neighbors of l
+            double max_dist = r + landmarks[near].radius + std::max(r, landmarks[near].radius); // r1+2*r2, tighter than 3*radius
+            if (/* landmarks[near].voronoi.size() != 0 && */ dist(ngb, near) <= max_dist) // could be tighter using the radius of ngb and near? r1+2*r2, also magically handles the empty voronoi case.
                                                                                       // we check again before committing it to neighbors, so maybe we don't need to check here? Actually we do, the check later does not remove neighbors from near.
               l_neighbors.insert(near);
             else
@@ -281,13 +292,15 @@ void choose_n_farthest_points(Distance dist_,
             ngb_info.neighbors.erase(x); // also remove the symmetric?
           }
         }
-      }
-      return modified;
     };
     // We should first do all the voronoi stuff, and only then the neighbor stuff, so we can use up to date radii. The main drawback is how to remember "modified".
-    handle_neighbor(l_parent);
-    for (std::size_t ngb : parent_info.neighbors) // if it hasn't been done already, check if those neighbors are still close enough.
-      handle_neighbor(ngb);
+    if(handle_neighbor_voronoi(l_parent)) handle_neighbor_neighbors(l_parent);
+    for (std::size_t ngb : parent_info.neighbors) { // if it hasn't been done already, check if those neighbors are still close enough.
+      // if(...)
+      handle_neighbor_voronoi(ngb);
+    }
+    for (std::size_t ngb : modified_neighbors)
+      if(ngb != l_parent) handle_neighbor_neighbors(ngb);
     //if (parent_info.voronoi.empty()) parent_info.neighbors.clear(); // useless, we will never look at it?
     compute_radius(l);
     info.position_in_queue = radius_priority.push(l);
@@ -295,7 +308,8 @@ void choose_n_farthest_points(Distance dist_,
     l_neighbors.insert(l_parent);
     // if neighbors is already a set, we don't need an intermediate l_neighbors, or we could make neighbors a vector
     for (std::size_t ngb : l_neighbors) {
-      if (landmarks[ngb].voronoi.size() != 0 && dist(l, ngb) <= 3 * radius) {
+      double max_dist = info.radius + landmarks[ngb].radius + std::max(info.radius, landmarks[ngb].radius); // r1+2*r2, tighter than 3*radius
+      if (landmarks[ngb].voronoi.size() != 0 && dist(l, ngb) <= max_dist) {
         info.neighbors.insert(ngb);
         landmarks[ngb].neighbors.insert(l);
       }
