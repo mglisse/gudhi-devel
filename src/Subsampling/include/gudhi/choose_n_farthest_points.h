@@ -161,11 +161,11 @@ template<class FT>
 struct Landmark_info {
   std::size_t far; FT radius;
   // The points that are closer to this landmark than to other landmarks
-  std::vector<std::size_t> voronoi;
+  std::vector<std::pair<std::size_t, FT>> voronoi;
   // For a landmark A, the list of landmarks B such that picking a Voronoi
   // point of A as a new landmark might steal a Voronoi point from B.
   std::vector<std::size_t> neighbors;
-  // Should we cache the distances in the 2 lists above, and maybe elsewhere?
+  // Should we cache the distances in the list above, and maybe elsewhere?
   typename radius_priority_ds<FT>::handle_type position_in_queue;
 };
 template<class FT>
@@ -214,8 +214,7 @@ void choose_n_farthest_points(Distance dist_,
   {
     FT r = -std::numeric_limits<FT>::infinity(); // -2 * diameter should suffice
     std::size_t jmax = -1;
-    for(std::size_t j : landmarks[i].voronoi) {
-      FT d = dist(i,j);
+    for(auto [ j, d ] : landmarks[i].voronoi) {
       if (d > r) {
         r = d;
         jmax = j;
@@ -236,7 +235,7 @@ void choose_n_farthest_points(Distance dist_,
     ini.voronoi.reserve(nb_points - 1);
     for (std::size_t i = 0; i < nb_points; ++i)
       if (i != starting_point)
-        ini.voronoi.push_back(i);
+        ini.voronoi.emplace_back(i, dist(starting_point, i));
     compute_radius(starting_point);
     ini.position_in_queue = radius_priority.push(starting_point);
   }
@@ -260,11 +259,14 @@ void choose_n_farthest_points(Distance dist_,
     auto handle_neighbor_voronoi = [&](std::size_t ngb)
     {
       auto& ngb_info = landmarks[ngb];
-      auto it = std::remove_if(ngb_info.voronoi.begin(), ngb_info.voronoi.end(), [&](std::size_t w)
+      auto it = std::remove_if(ngb_info.voronoi.begin(), ngb_info.voronoi.end(), [&](auto wd)
           {
-            if (dist(l, w) < dist(ngb, w)) {
+            std::size_t w = wd.first;
+            FT d = wd.second;
+            FT newd = dist(l, w);
+            if (newd < d) {
               if (w != l) // w==l can only happen for ngb==l_parent
-                info.voronoi.push_back(w);
+                info.voronoi.emplace_back(w, newd);
               return true;
             }
             return false;
