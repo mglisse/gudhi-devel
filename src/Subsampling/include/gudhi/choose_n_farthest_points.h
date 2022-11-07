@@ -272,7 +272,9 @@ void choose_n_farthest_points(Distance dist_,
       if (it != ngb_info.voronoi.end()) { // modified, always true for ngb==l_parent
         ngb_info.voronoi.erase(it, ngb_info.voronoi.end());
         modified_neighbors.push_back(ngb);
-        update_radius(ngb); // We could check if 'far' was removed, otherwise this is unnecessary
+        // We only need to recompute the radius if far was removed. This seems to help, but barely. // TODO: check in dim 3+
+        if (dist(l, ngb_info.far < ngb_info.radius))
+          update_radius(ngb);
         // if (ngb_info.voronoi.empty()) radius_priority.erase(ngb_info.position_in_queue);
         return true;
       } else {
