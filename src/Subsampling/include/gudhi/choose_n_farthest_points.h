@@ -12,7 +12,7 @@
 #define CHOOSE_N_FARTHEST_POINTS_H_
 
 #include <boost/range.hpp>
-#include <boost/heap/skew_heap.hpp>
+#include <boost/heap/d_ary_heap.hpp>
 
 #include <gudhi/Null_output_iterator.h>
 
@@ -26,8 +26,6 @@
 namespace Gudhi {
 
 namespace subsampling {
-//typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt::FT FT;
-typedef double FT;
 
 /**
  *  \ingroup subsampling
@@ -94,10 +92,11 @@ void choose_n_farthest_points1(Distance dist,
   }
 
   // FIXME: don't hard-code the type as double. For Epeck_d, we also want to handle types that do not have an infinity.
-  //static_assert(std::numeric_limits<double>::has_infinity, "the number type needs to support infinity()");
+  typedef double FT;
+  static_assert(std::numeric_limits<double>::has_infinity, "the number type needs to support infinity()");
 
   *output_it++ = input_pts[starting_point];
-  *dist_it++ = 0;
+  *dist_it++ = std::numeric_limits<FT>::infinity();
   if (final_size == 1) return;
 
   std::vector<std::size_t> points(nb_points);  // map from remaining points to indexes in input_pts
@@ -148,20 +147,29 @@ void choose_n_farthest_points1(Distance dist,
 }
 
 
-struct Landmark_info;
+template<class FT> struct Landmark_info;
+template<class FT>
 struct Compare_landmark_radius {
-  std::vector<Landmark_info>* landmarks_p;
-  Compare_landmark_radius(std::vector<Landmark_info>* p): landmarks_p(p) {}
+  std::vector<Landmark_info<FT>>* landmarks_p;
+  Compare_landmark_radius(std::vector<Landmark_info<FT>>* p): landmarks_p(p) {}
   bool operator()(std::size_t, std::size_t) const;
 };
-typedef boost::heap::skew_heap<std::size_t, boost::heap::compare<Compare_landmark_radius>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>> radius_priority_ds;
+// I compared all the heaps in boost. Fibonacci is not bad, but d_ary is by far the fastest. Arity of 3 is clearly faster than 2, and doesn't change much afterwards.
+template<class FT>
+using radius_priority_ds = boost::heap::d_ary_heap<std::size_t, boost::heap::arity<7>, boost::heap::compare<Compare_landmark_radius<FT>>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>>;
+template<class FT>
 struct Landmark_info {
   std::size_t far; FT radius;
+  // The points that are closer to this landmark than to other landmarks
   std::vector<std::size_t> voronoi;
-  std::set<std::size_t> neighbors; // Should we cache the distances here, above, and maybe elsewhere?
-  radius_priority_ds::handle_type position_in_queue;
+  // For a landmark A, the list of landmarks B such that picking a Voronoi
+  // point of A as a new landmark might steal a Voronoi point from B.
+  std::vector<std::size_t> neighbors;
+  // Should we cache the distances in the 2 lists above, and maybe elsewhere?
+  typename radius_priority_ds<FT>::handle_type position_in_queue;
 };
-inline bool Compare_landmark_radius::operator()(std::size_t a, std::size_t b)const{ return (*landmarks_p)[a].radius < (*landmarks_p)[b].radius; }
+template<class FT>
+bool Compare_landmark_radius<FT>::operator()(std::size_t a, std::size_t b)const{ return (*landmarks_p)[a].radius < (*landmarks_p)[b].radius; }
 
 template < typename Distance,
 typename Point_range,
@@ -190,20 +198,21 @@ void choose_n_farthest_points(Distance dist_,
   }
 
   // FIXME: don't hard-code the type as double. For Epeck_d, we also want to handle types that do not have an infinity.
-  //static_assert(std::numeric_limits<double>::has_infinity, "the number type needs to support infinity()");
+  typedef double FT;
+  static_assert(std::numeric_limits<FT>::has_infinity, "the number type needs to support infinity()");
 
   *output_it++ = input_pts[starting_point];
-  *dist_it++ = 0;
+  *dist_it++ = std::numeric_limits<FT>::infinity();
   if (final_size == 1) return;
 
   auto dist = [&](std::size_t a, std::size_t b){ return dist_(input_pts[a], input_pts[b]); };
 
-  std::vector<Landmark_info> landmarks(nb_points);
-  radius_priority_ds radius_priority(&landmarks);
+  std::vector<Landmark_info<FT>> landmarks(nb_points);
+  radius_priority_ds<FT> radius_priority(&landmarks);
 
   auto compute_radius = [&](std::size_t i)
   {
-    FT r = -1000000;
+    FT r = -std::numeric_limits<FT>::infinity(); // -2 * diameter should suffice
     std::size_t jmax = -1;
     for(std::size_t j : landmarks[i].voronoi) {
       FT d = dist(i,j);
@@ -231,6 +240,9 @@ void choose_n_farthest_points(Distance dist_,
     compute_radius(starting_point);
     ini.position_in_queue = radius_priority.push(starting_point);
   }
+  // outside the loop to recycle the allocation
+  std::vector<std::size_t> modified_neighbors;
+  std::unordered_set<std::size_t> l_neighbors; // Should we use an allocator?
   for (std::size_t current_number_of_landmarks = 1; current_number_of_landmarks != final_size; current_number_of_landmarks++) {
     std::size_t l_parent = radius_priority.top();
     auto& parent_info = landmarks[l_parent];
@@ -239,9 +251,12 @@ void choose_n_farthest_points(Distance dist_,
     auto& info = landmarks[l];
     *output_it++ = input_pts[l];
     *dist_it++ = radius;
-    std::unordered_set<std::size_t> l_neighbors;
-    std::vector<std::size_t> modified_neighbors; // move outside the loop to recycle the allocation
-    auto max_dist = [](FT a, FT b){ return a+b+std::max(a,b); }; // tighter than 3*radius
+    l_neighbors.clear();
+    modified_neighbors.clear();
+    // If a Voronoi point X of A can steal a Voronoi point Y from B, then
+    // BY > XY >= AB - AX - BY, so AB <= AX + 2 * BY.
+    auto max_dist = [](FT a, FT b){ return a + 2 * b; }; // tighter than 3 * radius
+    // Check if any Voronoi points from ngb need to move to l
     auto handle_neighbor_voronoi = [&](std::size_t ngb)
     {
       auto& ngb_info = landmarks[ngb];
@@ -257,7 +272,8 @@ void choose_n_farthest_points(Distance dist_,
       if (it != ngb_info.voronoi.end()) { // modified, always true for ngb==l_parent
         ngb_info.voronoi.erase(it, ngb_info.voronoi.end());
         modified_neighbors.push_back(ngb);
-        update_radius(ngb); // check if 'far' was removed, otherwise unnecessary
+        update_radius(ngb); // We could check if 'far' was removed, otherwise this is unnecessary
+        // if (ngb_info.voronoi.empty()) radius_priority.erase(ngb_info.position_in_queue);
         return true;
       } else {
         return false;
@@ -266,61 +282,38 @@ void choose_n_farthest_points(Distance dist_,
     auto handle_neighbor_neighbors = [&](std::size_t ngb)
     {
         auto& ngb_info = landmarks[ngb];
-        //if (ngb_info.voronoi.empty()) { // Special-casing this does not seem very useful
-        //  // ?? ngb_info.voronoi.shrink_to_fit();
-        //  radius_priority.erase(ngb_info.position_in_queue);
-        //  for (std::size_t near : ngb_info.neighbors) {
-        //    // Clean-up, neighbors is lazily updated when we visit it
-        //    if (landmarks[near].voronoi.size() != 0 && dist(ngb, near) <= 3 * radius) // could be tighter using the radius of ngb and near?
-        //      l_neighbors.insert(near);
-        //    // don't prune ngb_info.neighbors, if this is l_parent we still need it, and this is the last time we look at it.
-        //    // err, we shouldn't clear() it, but removing the neighbors that are too far is still useful for l_parent
-        //  }
-        //  // can be done directly in the loop above, once the exact datastructure is settled
-        //  //ngb_info.neighbors.clear(); // also remove the symmetric?
-        //} else {
-          // What if ngb_info.voronoi is now empty?
-          std::vector<std::size_t> to_remove;
-          for (std::size_t near : ngb_info.neighbors) {
-            // Clean-up, neighbors is lazily updated when we visit it
-            FT r = (ngb == l_parent) ? radius : ngb_info.radius; // careful not to use the new reduced radius which excludes l before we have listed the new neighbors of l
+        std::vector<std::size_t> to_remove;
+        std::remove_if(ngb_info.neighbors.begin(), ngb_info.neighbors.end(), [&](std::size_t near){
             FT d = dist(ngb, near);
-            if (d <= 3 * radius) {
-            //if (/* landmarks[near].voronoi.size() != 0 && */ dist(ngb, near) <= max_dist(r, landmarks[near].radius)) // could be tighter using the radius of ngb and near? r1+2*r2, also magically handles the empty voronoi case.
-                                                                                      // we check again before committing it to neighbors, so maybe we don't need to check here? Actually we do, the check later does not remove neighbors from near.
-              l_neighbors.insert(near);
-              // BUG: the tight condition to go to l is not the same as the condition to be removed from ngb, OR it should use the radius before update
-            }
-            if (d > max_dist(r, landmarks[near].radius))
-              to_remove.push_back(near);
-          }
-          // can be done directly in the loop above, once the exact datastructure is settled
-          for (std::size_t x : to_remove) {
-            ngb_info.neighbors.erase(x); // also remove the symmetric?
-          }
-        //}
+            // conservative 3 * radius: we could use the old radii of ngb and near, but not the new ones
+            if (d <= 3 * radius) { l_neighbors.insert(near); }
+            // here it is safe to use the new radii
+            return d > max_dist(ngb_info.radius, landmarks[near].radius);
+            });
     };
-    // We should first do all the voronoi stuff, and only then the neighbor stuff, so we can use up to date radii. The main drawback is how to remember "modified".
+    // First update the Voronoi diagram, so we can compute all the updated
+    // radii before pruning neighbor lists. The main drawback is that we have
+    // to store modified_neighbors, and we don't have access to the old radii
+    // in handle_neighbor_neighbors.
     handle_neighbor_voronoi(l_parent);
-    for (std::size_t ngb : parent_info.neighbors) { // if it hasn't been done already, check if those neighbors are still close enough.
-      if(dist(l_parent, ngb) <= max_dist(radius, landmarks[ngb].radius)) { // radius from before update_radius(l_parent)
+    // Should we make this loop a remove_if? We already remove in the next loop.
+    for (std::size_t ngb : parent_info.neighbors)
+      if(dist(l_parent, ngb) <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
         handle_neighbor_voronoi(ngb);
-      } else {
-        // parent_info.neighbors.erase(ngb); // not while iterating on it!!!
-      }
-    }
     for (std::size_t ngb : modified_neighbors)
       handle_neighbor_neighbors(ngb);
-    //if (parent_info.voronoi.empty()) parent_info.neighbors.clear(); // useless, we will never look at it?
-    compute_radius(l); // would be more natural before the loop on modified_neighbors
+    // Finalize the new Voronoi cell. 
+    compute_radius(l);
     info.position_in_queue = radius_priority.push(l);
-    // ???
+    // The parent is an obvious candidate to be a neighbor
     l_neighbors.insert(l_parent);
-    // if neighbors is already a set, we don't need an intermediate l_neighbors, or we could make neighbors a vector
     for (std::size_t ngb : l_neighbors) {
-      if (landmarks[ngb].voronoi.size() != 0 && dist(l, ngb) <= max_dist(info.radius, landmarks[ngb].radius)) {
-        info.neighbors.insert(ngb);
-        landmarks[ngb].neighbors.insert(l);
+      FT d = dist(l, ngb);
+      if (d <= max_dist(info.radius, landmarks[ngb].radius)) {
+        info.neighbors.push_back(ngb);
+      }
+      if (d <= max_dist(landmarks[ngb].radius, info.radius)) {
+        landmarks[ngb].neighbors.push_back(l);
       }
     }
   }
