@@ -13,13 +13,13 @@
 
 #include <boost/range.hpp>
 #include <boost/heap/d_ary_heap.hpp>
+#include <boost/unordered_set.hpp> // preferably with boost 1.79+ for Fibonacci hashing
 
 #include <gudhi/Null_output_iterator.h>
 
 #include <iterator>
 #include <vector>
 #include <set>
-#include <unordered_set>
 #include <random>
 #include <limits>  // for numeric_limits<>
 
@@ -164,8 +164,8 @@ struct Landmark_info {
   std::vector<std::pair<std::size_t, FT>> voronoi;
   // For a landmark A, the list of landmarks B such that picking a Voronoi
   // point of A as a new landmark might steal a Voronoi point from B.
-  std::vector<std::size_t> neighbors;
-  // Should we cache the distances in the list above, and maybe elsewhere?
+  std::vector<std::pair<std::size_t, FT>> neighbors;
+  // Note that above we cache the distances. This is always good for Voronoi, and for neighbors it is neutral in 2D and helps in 4D.
   typename radius_priority_ds<FT>::handle_type position_in_queue;
 };
 template<class FT>
@@ -241,7 +241,7 @@ void choose_n_farthest_points(Distance dist_,
   }
   // outside the loop to recycle the allocation
   std::vector<std::size_t> modified_neighbors;
-  std::unordered_set<std::size_t> l_neighbors; // Should we use an allocator?
+  boost::unordered_set<std::size_t> l_neighbors; // Should we use an allocator?
   for (std::size_t current_number_of_landmarks = 1; current_number_of_landmarks != final_size; current_number_of_landmarks++) {
     std::size_t l_parent = radius_priority.top();
     auto& parent_info = landmarks[l_parent];
@@ -274,7 +274,7 @@ void choose_n_farthest_points(Distance dist_,
       if (it != ngb_info.voronoi.end()) { // modified, always true for ngb==l_parent
         ngb_info.voronoi.erase(it, ngb_info.voronoi.end());
         modified_neighbors.push_back(ngb);
-        // We only need to recompute the radius if far was removed. This seems to help, but barely. // TODO: check in dim 3+
+        // We only need to recompute the radius if far was removed. This seems to help, but barely in 2D. Neutral in 4D.
         if (dist(l, ngb_info.far < ngb_info.radius))
           update_radius(ngb);
         // if (ngb_info.voronoi.empty()) radius_priority.erase(ngb_info.position_in_queue);
@@ -287,8 +287,9 @@ void choose_n_farthest_points(Distance dist_,
     {
         auto& ngb_info = landmarks[ngb];
         std::vector<std::size_t> to_remove;
-        std::remove_if(ngb_info.neighbors.begin(), ngb_info.neighbors.end(), [&](std::size_t near){
-            FT d = dist(ngb, near);
+        std::remove_if(ngb_info.neighbors.begin(), ngb_info.neighbors.end(), [&](auto near_){
+            std::size_t near = near_.first;
+            FT d = near_.second;
             // conservative 3 * radius: we could use the old radii of ngb and near, but not the new ones
             if (d <= 3 * radius) { l_neighbors.insert(near); }
             // here it is safe to use the new radii
@@ -301,9 +302,11 @@ void choose_n_farthest_points(Distance dist_,
     // in handle_neighbor_neighbors.
     handle_neighbor_voronoi(l_parent);
     // Should we make this loop a remove_if? We already remove in the next loop.
-    for (std::size_t ngb : parent_info.neighbors)
-      if(dist(l_parent, ngb) <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
+    for (auto ngb_ : parent_info.neighbors) {
+      std::size_t ngb = ngb_.first;
+      if(ngb_.second <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
         handle_neighbor_voronoi(ngb);
+    }
     for (std::size_t ngb : modified_neighbors)
       handle_neighbor_neighbors(ngb);
     // Finalize the new Voronoi cell. 
@@ -314,10 +317,10 @@ void choose_n_farthest_points(Distance dist_,
     for (std::size_t ngb : l_neighbors) {
       FT d = dist(l, ngb);
       if (d <= max_dist(info.radius, landmarks[ngb].radius)) {
-        info.neighbors.push_back(ngb);
+        info.neighbors.emplace_back(ngb, d);
       }
       if (d <= max_dist(landmarks[ngb].radius, info.radius)) {
-        landmarks[ngb].neighbors.push_back(l);
+        landmarks[ngb].neighbors.emplace_back(l, d);
       }
     }
   }

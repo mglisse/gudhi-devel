@@ -1,5 +1,6 @@
-#include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
+//#include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Epick_d.h>
 #include <gudhi/choose_n_farthest_points.h>
 
 #include <CGAL/Random.h>
@@ -12,8 +13,9 @@
 
 int main(int argc, char**argv) {
   //typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt K;
-  typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-  typedef typename K::Point_2 Point_d;
+  //typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
+  typedef CGAL::Epick_d<CGAL::Dimension_tag<4>> K;
+  typedef typename K::Point_d Point_d;
 
   CGAL::Random rd(atoi(argv[2]));
   //CGAL::Random rd(994);
@@ -22,9 +24,9 @@ int main(int argc, char**argv) {
   //const int n2 = 4;
   const int n1 = n2;
   const int j = 0;
-  std::vector<Point_d> points;
+  std::vector<Point_d> points; points.reserve(n2);
   for (int i = 0; i < n2; ++i) {
-    points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1));
+    points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1));
 #if PRINT
     std::cerr << "Point " << i << ": " << points.back().x() << '\t' << points.back().y() << '\n';
 #endif
@@ -32,7 +34,7 @@ int main(int argc, char**argv) {
 
   K k;
 
-  auto dis = [&](auto&p, auto&q){return sqrt(k.compute_squared_distance_2_object()(p,q));};
+  auto dis = [&](auto&p, auto&q){return sqrt(k.squared_distance_d_object()(p,q));};
 
 #if PRINT
   std::cerr.setf(std::ios_base::fixed, std::ios_base::floatfield);
@@ -46,8 +48,8 @@ int main(int argc, char**argv) {
   }
 #endif
 
-  std::vector<Point_d> results;
-  std::vector<K::FT> dists;
+  std::vector<Point_d> results; results.reserve(points.size());
+  std::vector<K::FT> dists; dists.reserve(points.size());
 #ifndef PROFIL
   auto time_start1 = std::chrono::system_clock::now();
   Gudhi::subsampling::choose_n_farthest_points1(dis, points, n1,
