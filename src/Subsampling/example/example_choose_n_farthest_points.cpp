@@ -14,7 +14,8 @@
 int main(int argc, char**argv) {
   //typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt K;
   //typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-  typedef CGAL::Epick_d<CGAL::Dimension_tag<4>> K;
+  typedef CGAL::Epick_d<CGAL::Dimension_tag<2>> K;
+  //typedef CGAL::Epick_d<CGAL::Dimension_tag<4>> K;
   typedef typename K::Point_d Point_d;
 
   CGAL::Random rd(atoi(argv[2]));
@@ -26,7 +27,8 @@ int main(int argc, char**argv) {
   const int j = 0;
   std::vector<Point_d> points; points.reserve(n2);
   for (int i = 0; i < n2; ++i) {
-    points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1));
+    points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1));
+    //points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1));
 #if PRINT
     std::cerr << "Point " << i << ": " << points.back().x() << '\t' << points.back().y() << '\n';
 #endif
