@@ -30,7 +30,7 @@ int main(int argc, char**argv) {
     points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1));
     //points.emplace_back(rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1), rd.get_double(-1., 1));
 #if PRINT
-    std::cerr << "Point " << i << ": " << points.back().x() << '\t' << points.back().y() << '\n';
+    std::cerr << "Point " << i << ": " << points.back()[0] << '\t' << points.back()[1] << '\n';
 #endif
   }
 
