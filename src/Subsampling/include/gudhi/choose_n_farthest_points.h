@@ -287,7 +287,6 @@ void choose_n_farthest_points(Distance dist_,
     auto handle_neighbor_neighbors = [&](std::size_t ngb)
     {
         auto& ngb_info = landmarks[ngb];
-        std::vector<std::size_t> to_remove;
         std::remove_if(ngb_info.neighbors.begin(), ngb_info.neighbors.end(), [&](auto near_){
             std::size_t near = near_.first;
             FT d = near_.second;
@@ -305,6 +304,7 @@ void choose_n_farthest_points(Distance dist_,
     // Should we make this loop a remove_if? We already remove in the next loop.
     for (auto ngb_ : parent_info.neighbors) {
       std::size_t ngb = ngb_.first;
+      // TODO: tighter test that dist(l, ngb) <= 2 * landmarks[ngb].radius ?
       if(ngb_.second <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
         handle_neighbor_voronoi(ngb);
     }
