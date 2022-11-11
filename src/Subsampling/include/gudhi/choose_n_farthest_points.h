@@ -147,6 +147,9 @@ void choose_n_farthest_points1(Distance dist,
 }
 
 
+// How bad is it to use the triangle inequality with inexact double computations?
+// Hopefully we still get a net-tree.
+
 template<class FT> struct Landmark_info;
 template<class FT>
 struct Compare_landmark_radius {
@@ -154,16 +157,19 @@ struct Compare_landmark_radius {
   Compare_landmark_radius(std::vector<Landmark_info<FT>>* p): landmarks_p(p) {}
   bool operator()(std::size_t, std::size_t) const;
 };
-// I compared all the heaps in boost. Fibonacci is not bad, but d_ary is by far the fastest. Arity of 3 is clearly faster than 2, and doesn't change much afterwards.
+// I compared all the heaps in boost. Fibonacci is not bad, but d_ary is by far the fastest.
+// Arity of 3 is clearly faster than 2, and speed doesn't change much when increasing the arity even more.
 template<class FT>
-using radius_priority_ds = boost::heap::d_ary_heap<std::size_t, boost::heap::arity<7>, boost::heap::compare<Compare_landmark_radius<FT>>, boost::heap::mutable_<true>, boost::heap::constant_time_size<false>>;
+using radius_priority_ds =
+  boost::heap::d_ary_heap<std::size_t, boost::heap::arity<7>, boost::heap::compare<Compare_landmark_radius<FT>>,
+                          boost::heap::mutable_<true>, boost::heap::constant_time_size<false>>;
 template<class FT>
 struct Landmark_info {
   std::size_t far; FT radius;
   // The points that are closer to this landmark than to other landmarks
   std::vector<std::pair<std::size_t, FT>> voronoi;
   // For a landmark A, the list of landmarks B such that picking a Voronoi
-  // point of A as a new landmark might steal a Voronoi point from B.
+  // point of A as a new landmark might steal a Voronoi point from B, or vice versa.
   std::vector<std::pair<std::size_t, FT>> neighbors;
   // Note that above we cache the distances. This is always good for Voronoi, and for neighbors it is neutral in 2D and helps in 4D.
   typename radius_priority_ds<FT>::handle_type position_in_queue;
@@ -253,8 +259,8 @@ void choose_n_farthest_points(Distance dist_,
     l_neighbors.clear();
     modified_neighbors.clear();
     // If a Voronoi point X of A can steal a Voronoi point Y from B, then
-    // BY > XY >= AB - AX - BY, so AB <= AX + 2 * BY.
-    auto max_dist = [](FT a, FT b){ return a + 2 * b; }; // tighter than 3 * radius
+    // BY > XY >= AB - AX - BY, so AB < AX + 2 * BY. Symmetrized.
+    auto max_dist = [](FT a, FT b){ return a + b + std::max(a, b); }; // tighter than 3 * radius
     // Check if any Voronoi points from ngb need to move to l
     auto handle_neighbor_voronoi = [&](std::size_t ngb)
     {
@@ -293,7 +299,7 @@ void choose_n_farthest_points(Distance dist_,
             // conservative 3 * radius: we could use the old radii of ngb and near, but not the new ones
             if (d <= 3 * radius) { l_neighbors.insert(near); }
             // here it is safe to use the new radii
-            return d > max_dist(ngb_info.radius, landmarks[near].radius);
+            return d >= max_dist(ngb_info.radius, landmarks[near].radius);
             });
     };
     // First update the Voronoi diagram, so we can compute all the updated
@@ -304,8 +310,10 @@ void choose_n_farthest_points(Distance dist_,
     // Should we make this loop a remove_if? We already remove in the next loop.
     for (auto ngb_ : parent_info.neighbors) {
       std::size_t ngb = ngb_.first;
-      // TODO: tighter test that dist(l, ngb) <= 2 * landmarks[ngb].radius ?
-      if(ngb_.second <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
+      //if(ngb_.second <= max_dist(radius, landmarks[ngb].radius)) // radius from before update_radius(l_parent)
+      //if(ngb_.second <= radius + 2 * landmarks[ngb].radius) // no need to symmetrize
+      // If X can steal a Voronoi point Y from B, then BY > XY >= BX - BY, so BX < 2 * BY.
+      if(dist(l, ngb) < 2 * landmarks[ngb].radius)
         handle_neighbor_voronoi(ngb);
     }
     for (std::size_t ngb : modified_neighbors)
@@ -317,10 +325,8 @@ void choose_n_farthest_points(Distance dist_,
     l_neighbors.insert(l_parent);
     for (std::size_t ngb : l_neighbors) {
       FT d = dist(l, ngb);
-      if (d <= max_dist(info.radius, landmarks[ngb].radius)) {
+      if (d < max_dist(info.radius, landmarks[ngb].radius)) {
         info.neighbors.emplace_back(ngb, d);
-      }
-      if (d <= max_dist(landmarks[ngb].radius, info.radius)) {
         landmarks[ngb].neighbors.emplace_back(l, d);
       }
     }
