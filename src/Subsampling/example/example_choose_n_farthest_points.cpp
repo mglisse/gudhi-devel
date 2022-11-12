@@ -1,8 +1,6 @@
-//#include <CGAL/Exact_predicates_exact_constructions_kernel_with_sqrt.h>
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/Epick_d.h>
 #include <gudhi/choose_n_farthest_points.h>
 
+#include <CGAL/Epick_d.h>
 #include <CGAL/Random.h>
 
 #include <iostream>
@@ -12,8 +10,6 @@
 #include <chrono>
 
 int main(int argc, char**argv) {
-  //typedef CGAL::Exact_predicates_exact_constructions_kernel_with_sqrt K;
-  //typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
   typedef CGAL::Epick_d<CGAL::Dimension_tag<2>> K;
   //typedef CGAL::Epick_d<CGAL::Dimension_tag<4>> K;
   typedef typename K::Point_d Point_d;
