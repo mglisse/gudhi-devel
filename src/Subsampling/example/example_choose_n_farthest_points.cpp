@@ -54,7 +54,7 @@ int main(int argc, char**argv) {
   std::vector<K::FT> dists; dists.reserve(points.size());
 #ifndef PROFIL
   auto time_start1 = std::chrono::system_clock::now();
-  Gudhi::subsampling::choose_n_farthest_points1(dis, points, n1,
+  Gudhi::subsampling::choose_n_farthest_points(dis, points, n1,
                                                j,
                                                std::back_inserter(results),
                                                std::back_inserter(dists)
@@ -65,7 +65,7 @@ int main(int argc, char**argv) {
   results.clear(); dists.clear();
   auto time_start2 = std::chrono::system_clock::now();
 #endif
-  Gudhi::subsampling::choose_n_farthest_points(dis, points, n1,
+  Gudhi::subsampling::choose_n_farthest_points_metric(dis, points, n1,
                                                j,
                                                std::back_inserter(results),
                                                std::back_inserter(dists)

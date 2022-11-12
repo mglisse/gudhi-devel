@@ -19,7 +19,6 @@
 
 #include <iterator>
 #include <vector>
-#include <set>
 #include <random>
 #include <limits>  // for numeric_limits<>
 
@@ -37,10 +36,10 @@ enum : std::size_t {
   random_starting_point = std::size_t(-1)
 };
 
-/** 
+/**
  *  \ingroup subsampling
  *  \brief Subsample by a greedy strategy of iteratively adding the farthest point from the
- *  current chosen point set to the subsampling. 
+ *  current chosen point set to the subsampling.
  *  \details
  *  The iteration starts with the landmark `starting point` or, if `starting point==random_starting_point`,
  *  with a random landmark.
@@ -50,7 +49,7 @@ enum : std::size_t {
  *  outputs the distance from each of those points to the set of previous
  *  points in `dist_it`.
  *  \tparam Distance must provide an operator() that takes 2 points (value type of the range)
- *  and returns their distance as a `double`. It must be a true metric, the algorithm relies on the triangle inequality.
+ *  and returns their distance (or some more general proximity measure) as a `double`.
  *  \tparam Point_range Random access range of points.
  *  \tparam PointOutputIterator Output iterator whose value type is the point type.
  *  \tparam DistanceOutputIterator Output iterator for distances.
@@ -63,13 +62,13 @@ enum : std::size_t {
  *
  * \warning Older versions of this function took a CGAL kernel as argument. Users need to replace `k` with
  * `k.squared_distance_d_object()` in the first argument of every call to `choose_n_farthest_points`.
- *  
+ *
  */
 template < typename Distance,
 typename Point_range,
 typename PointOutputIterator,
 typename DistanceOutputIterator = Null_output_iterator>
-void choose_n_farthest_points1(Distance dist,
+void choose_n_farthest_points(Distance dist,
                               Point_range const &input_pts,
                               std::size_t final_size,
                               std::size_t starting_point,
@@ -177,16 +176,36 @@ struct Landmark_info {
 template<class FT>
 bool Compare_landmark_radius<FT>::operator()(std::size_t a, std::size_t b)const{ return (*landmarks_p)[a].radius < (*landmarks_p)[b].radius; }
 
+/**
+ *  \ingroup subsampling
+ *  \brief Subsample by a greedy strategy of iteratively adding the farthest point from the
+ *  current chosen point set to the subsampling.
+ *  \details
+ *  This computes the same thing as `choose_n_farthest_points`, but relies on the triangle
+ *  inequality to reduce the amount of computation when the doubling dimension is small.
+ *  With an unbounded doubling dimension, this can be much slower than `choose_n_farthest_points` though.
+ *  \tparam Distance must provide an operator() that takes 2 points (value type of the range)
+ *  and returns their distance as a `double`. It must be a true metric, the algorithm relies on the triangle inequality.
+ *  \tparam Point_range Random access range of points.
+ *  \tparam PointOutputIterator Output iterator whose value type is the point type.
+ *  \tparam DistanceOutputIterator Output iterator for distances.
+ * @param[in] dist A distance function.
+ * @param[in] input_pts The input points.
+ * @param[in] final_size The size of the subsample to compute.
+ * @param[in] starting_point The seed in the farthest point algorithm.
+ * @param[out] output_it The output iterator for points.
+ * @param[out] dist_it The optional output iterator for distances.
+ */
 template < typename Distance,
 typename Point_range,
 typename PointOutputIterator,
 typename DistanceOutputIterator = Null_output_iterator>
-void choose_n_farthest_points(Distance dist_,
-                              Point_range const &input_pts,
-                              std::size_t final_size,
-                              std::size_t starting_point,
-                              PointOutputIterator output_it,
-                              DistanceOutputIterator dist_it = {}) {
+void choose_n_farthest_points_metric(Distance dist_,
+                                     Point_range const &input_pts,
+                                     std::size_t final_size,
+                                     std::size_t starting_point,
+                                     PointOutputIterator output_it,
+                                     DistanceOutputIterator dist_it = {}) {
   std::size_t nb_points = boost::size(input_pts);
   if (final_size > nb_points)
     final_size = nb_points;
@@ -296,9 +315,9 @@ void choose_n_farthest_points(Distance dist_,
         std::remove_if(ngb_info.neighbors.begin(), ngb_info.neighbors.end(), [&](auto near_){
             std::size_t near = near_.first;
             FT d = near_.second;
-            // conservative 3 * radius: we could use the old radii of ngb and near, but not the new ones
+            // Conservative 3 * radius: we could use the old radii of ngb and near, but not the new ones.
             if (d <= 3 * radius) { l_neighbors.insert(near); }
-            // here it is safe to use the new radii
+            // Here it is safe to use the new radii.
             return d >= max_dist(ngb_info.radius, landmarks[near].radius);
             });
     };
@@ -316,12 +335,15 @@ void choose_n_farthest_points(Distance dist_,
       if(dist(l, ngb) < 2 * landmarks[ngb].radius)
         handle_neighbor_voronoi(ngb);
     }
+    // If there are too many neighbors (of neighbors), this could be quadratic (?).
+    // Testing every landmark would then be faster, linear.
+    // TODO: find a good heuristic to switch to the linear case.
     for (std::size_t ngb : modified_neighbors)
       handle_neighbor_neighbors(ngb);
-    // Finalize the new Voronoi cell. 
+    // Finalize the new Voronoi cell.
     compute_radius(l);
     info.position_in_queue = radius_priority.push(l);
-    // The parent is an obvious candidate to be a neighbor
+    // The parent is an obvious candidate to be a neighbor.
     l_neighbors.insert(l_parent);
     for (std::size_t ngb : l_neighbors) {
       FT d = dist(l, ngb);
