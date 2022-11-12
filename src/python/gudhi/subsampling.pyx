@@ -49,8 +49,8 @@ def choose_n_farthest_points(points=None, off_file='', nb_points=-1, starting_po
     point`, which is the index of the point to start with. If not set, this \
     index is chosen randomly.
     :type starting_point: int
-    :param fast: If True, use an implementation that is efficient when the doubling dimension is small, \
-    but slow if it is high. If False, use the standard quadratic algorithm.
+    :param fast: If True, use an implementation that is efficient when the doubling dimension \
+    and spread are small, but slow otherwise. If False, use the standard quadratic algorithm.
     :type fast: bool
     :returns:  The subsample point set, in the order they were selected by the greedy strategy.
     :rtype: List[List[float]]
