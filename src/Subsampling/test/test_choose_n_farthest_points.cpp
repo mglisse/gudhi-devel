@@ -131,6 +131,9 @@ BOOST_AUTO_TEST_CASE(test_compare_choose_farthest_point)
   int start = 0;
   Gudhi::subsampling::choose_n_farthest_points(d, orig, -1, start, std::back_inserter(out1), std::back_inserter(dist1));
   Gudhi::subsampling::choose_n_farthest_points_metric(d, orig, -1, start, std::back_inserter(out2), std::back_inserter(dist2));
+  // With a million points, we would see differences because several edges
+  // would have the same length, but with just 1000 that should be very rare.
   BOOST_CHECK(out1 == out2);
   BOOST_CHECK(dist1 == dist2);
+  // We may need to replace this last == with an approximate check (or not test dist).
 }
