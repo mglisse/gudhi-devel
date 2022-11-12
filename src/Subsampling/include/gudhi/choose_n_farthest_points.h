@@ -184,6 +184,7 @@ bool Compare_landmark_radius<FT>::operator()(std::size_t a, std::size_t b)const{
  *  This computes the same thing as `choose_n_farthest_points`, but relies on the triangle
  *  inequality to reduce the amount of computation when the doubling dimension and spread are small.
  *  In the worst case, this can be much slower than `choose_n_farthest_points` though.
+ *  See \cite{sheehy20onehop} and its references for details about this algorithm.
  *  \tparam Distance must provide an operator() that takes 2 points (value type of the range)
  *  and returns their distance as a `double`. It must be a true metric, the algorithm relies on the triangle inequality.
  *  \tparam Point_range Random access range of points.
