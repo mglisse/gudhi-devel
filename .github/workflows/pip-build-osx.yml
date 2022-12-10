@@ -45,7 +45,7 @@ jobs:
               Y=`basename $X`
               lipo -create $X deps-arm64/$A/*/lib/$Y -output deps-uni/lib/$Y
               install_name_tool -id $PWD/deps-uni/lib/$Y deps-uni/lib/$Y
-              ln -s $Y deps-uni/lib/lib$A.dylib
+              ln -s $Y deps-uni/lib/${Y%.*.dylib}.dylib
             done
           done
           ls -l deps-uni/lib
