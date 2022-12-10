@@ -41,11 +41,14 @@ jobs:
           cd ..
           mkdir -p deps-uni/lib
           for A in gmp mpfr; do
-            for X in deps-amd64/$A/*/lib/lib*; do
+            for X in deps-amd64/$A/*/lib/lib*.*.dylib; do
               Y=`basename $X`
               lipo -create $X deps-arm64/$A/*/lib/$Y -output deps-uni/lib/$Y
+              install_name_tool -id $PWD/deps-uni/lib/$Y deps-uni/lib/$Y
+              ln -s $Y deps-uni/lib/lib$A.dylib
             done
           done
+          ls -l deps-uni/lib
           # TODO: fix the install_name of the libraries
       - name: Build python wheel
         run: |
@@ -58,7 +61,6 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=Release -DPython_ADDITIONAL_VERSIONS=3 ..
           cd src/python
           python setup.py bdist_wheel
-          export DYLD_LIBRARY_PATH="$GMP_LIB_DIR"
           /Users/runner/.local/bin/delocate-wheel -v dist/*.whl
       - name: Upload wheel
         uses: actions/upload-artifact@v3
