@@ -58,7 +58,7 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=Release -DPython_ADDITIONAL_VERSIONS=3 ..
           cd src/python
           python setup.py bdist_wheel
-          /Users/runner/.local/bin/delocate-wheel -v build/src/python/dist/*.whl
+          /Users/runner/.local/bin/delocate-wheel -v dist/*.whl
       - name: Upload wheel
         uses: actions/upload-artifact@v3
         with:
