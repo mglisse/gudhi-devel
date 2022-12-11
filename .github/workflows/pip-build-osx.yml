@@ -31,11 +31,11 @@ jobs:
           python -m pip install --user twine delocate
           ./scripts/build_osx_universal_gmpfr.sh
           # Now the universal libraries are in $PWD/deps-uni/lib
+      - name: Build python wheel
+        run: |
           export   GMP_LIB_DIR=$PWD/deps-uni/lib
           export GMPXX_LIB_DIR=$PWD/deps-uni/lib
           export  MPFR_LIB_DIR=$PWD/deps-uni/lib
-      - name: Build python wheel
-        run: |
           python --version
           mkdir build
           cd build
