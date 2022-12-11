@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
 
+env:
+  MACOSX_DEPLOYMENT_TARGET: 10.14
+  _PYTHON_HOST_PLATFORM: macosx-10.14-universal2
+  ARCHFLAGS: "-arch arm64 -arch x86_64"
+
 jobs:
   build:
     runs-on: macos-latest
@@ -26,6 +31,11 @@ jobs:
           brew install boost eigen gmp mpfr cgal || true
           python -m pip install --user -r ext/gudhi-deploy/build-requirements.txt
           python -m pip install --user twine delocate
+          ./scripts/build_osx_universal_gmpfr.sh
+          # Now the universal libs are in $PWD/deps-uni/lib
+          export   GMP_LIB_DIR=$PWD/deps-uni/lib
+          export GMPXX_LIB_DIR=$PWD/deps-uni/lib
+          export  MPFR_LIB_DIR=$PWD/deps-uni/lib
       - name: Build python wheel
         run: |
           python --version
@@ -46,5 +56,5 @@ jobs:
         run: |
           mkdir wheelhouse
           /Users/runner/.local/bin/delocate-listdeps build/src/python/dist/*
-          /Users/runner/.local/bin/delocate-wheel --require-archs x86_64 -w wheelhouse build/src/python/dist/*
+          /Users/runner/.local/bin/delocate-wheel --require-archs universal2 -w wheelhouse build/src/python/dist/*
           python -m twine upload wheelhouse/*
