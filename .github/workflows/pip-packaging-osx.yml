@@ -3,8 +3,8 @@ name: pip packaging osx
 on: push
 
 env:
-  MACOSX_DEPLOYMENT_TARGET: 10.14
-  _PYTHON_HOST_PLATFORM: macosx-10.14-universal2
+  MACOSX_DEPLOYMENT_TARGET: 10.15
+  _PYTHON_HOST_PLATFORM: macosx-10.15-universal2
   ARCHFLAGS: "-arch arm64 -arch x86_64"
 
 jobs:
