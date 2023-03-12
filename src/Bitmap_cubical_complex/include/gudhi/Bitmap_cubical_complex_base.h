@@ -790,6 +790,7 @@ Bitmap_cubical_complex_base<T>::Bitmap_cubical_complex_base(const std::vector<un
               std::invalid_argument("Number of cells inconsistent with dimensions"));
   for_each_vertex([this, &vertices, index=(std::size_t)0] (auto cell) mutable { get_cell_data(cell) = vertices[index++]; });
   int max_dim = multipliers.size()-1;
+  // TODO: do the propagation and the persistence computation together, so we can build many local pairs and omit them from the list of edges.
   for (int dim = max_dim; dim >= 0; --dim)
     propagate_from_vertices_rec(dim, max_dim, 0, [](T a, T b){return std::min(a, b);});
 #ifdef DEBUG_TRACES
@@ -1118,8 +1119,9 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
     std::size_t parent;
     std::size_t rank;
     // The rank heuristic in union-find means that the representative may not be the same as defined by persistent
-    // homology, so we store this one as well. We could skip an indirection, store data[birth], and output 2 T
-    // instead of 2 size_t.
+    // homology, so we store this one as well.
+    // We could skip an indirection, store data[birth], and output 2 T instead of 2 size_t,
+    // it would save 12% of the time if we only care about the diagram.
     std::size_t birth;
   };  // information on a cluster
   std::vector<Pers2d_cluster_data> ds_base((data.size() + 1) / 2); // TODO: tighten this number a bit
