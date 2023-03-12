@@ -4,3 +4,8 @@ add_executable(bitmap_cubical_complex_benchmark bitmap_cubical_complex_benchmark
 if (TBB_FOUND)
   target_link_libraries(bitmap_cubical_complex_benchmark ${TBB_LIBRARIES})
 endif()
+
+add_executable(persistence_2d persistence_2d.cpp)
+if (TBB_FOUND)
+  target_link_libraries(persistence_2d ${TBB_LIBRARIES})
+endif()

@@ -85,6 +85,10 @@ class Bitmap_cubical_complex : public T {
       : T(dimensions, cells, input_top_cells), key_associated_to_simplex(num_simplices()) {
   }
 
+  Bitmap_cubical_complex(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& cells, Dual_from_vertices)
+    : T(dimensions, cells, Dual_from_vertices()) {}
+
+
   /**
    * @param[in] dimensions The shape that should be used to interpret `cells` (in Fortran order).
    * @param[in] cells The filtration values of the top-dimensional cells if `input_top_cells` is `true`,
@@ -236,6 +240,8 @@ class Bitmap_cubical_complex : public T {
    * Secondary criteria for filtration are:
    * (1) Dimension of a cube (lower dimensional comes first).
    * (2) Position in the data structure (the ones that are earliest in the data structure come first).
+   *
+   * This implicitly calls initialize_filtration() if it has never been called.
    **/
   Filtration_simplex_range const& filtration_simplex_range() {
 #ifdef DEBUG_TRACES
