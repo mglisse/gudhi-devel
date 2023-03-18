@@ -789,18 +789,6 @@ Bitmap_cubical_complex_base<T>::Bitmap_cubical_complex_base(const std::vector<un
                               (std::size_t)1, std::multiplies<std::size_t>()) == vertices.size(),
               std::invalid_argument("Number of cells inconsistent with dimensions"));
   for_each_vertex([this, &vertices, index=(std::size_t)0] (auto cell) mutable { get_cell_data(cell) = vertices[index++]; });
-  int max_dim = multipliers.size()-1;
-  // TODO: do the propagation and the persistence computation together, so we can build many local pairs and omit them from the list of edges.
-  for (int dim = max_dim; dim >= 0; --dim)
-    propagate_from_vertices_rec(dim, max_dim, 0, [](T a, T b){return std::min(a, b);});
-#ifdef DEBUG_TRACES
-  std::clog << "data after init\n";
-  for(std::size_t i = 0; i < data.size(); ++i) {
-    std::clog << data[i] << '\t';
-    if ((i+1)%multipliers[1] == 0)
-      std::clog << '\n';
-  }
-#endif
 }
 
 template <typename T>
@@ -1134,7 +1122,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
   auto ds_rank = boost::make_transform_value_property_map([](auto& p) -> std::size_t& { return p.rank; }, ds_data);
   auto ds_birth = boost::make_transform_value_property_map([](auto& p) -> std::size_t& { return p.birth; }, ds_data);
   boost::disjoint_sets<decltype(ds_rank), decltype(ds_parent)> ds(ds_rank, ds_parent);
-  T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
+
   // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
   // Real vertices/squares should be their own cluster at the beginning.
   for (std::size_t y = 1; y < 2 * sizes[1]; ++y)
@@ -1163,31 +1151,64 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
     e.v2 = new_v2;
   };
   std::vector<Edge> edges; edges.reserve(data.size() / 2); // TODO: tighten this number a bit
-  for (std::size_t y = 0; y < sizes[1] - 1; ++y) {
-    for (std::size_t x = 0; x < sizes[0] - 1; ++x) {
-      std::size_t i = (2 * y + 1) * dy + (2 * x + 1);
-      edges.emplace_back(data[i + 1], i, i + 2);
-      edges.emplace_back(data[i + dy], i, i + 2 * dy);
+
+  // TODO: build many local pairs and omit them from the list of edges.
+  auto f = [](T a, T b){return std::min(a, b);};
+  for(std::size_t x = 0; x < sizes[0] + 1; ++x) {
+    for(std::size_t y = 0; y < sizes[1]; ++y) {
+      std::size_t ref = 2 * x + dy * 2 * y;
+      std::size_t e = ref + dy;
+      data[e] = f(data[ref], data[ref + 2 * dy]);
+      //if (x != 0 && x != sizes[0]) edges.emplace_back(data[e], e - 1, e + 1);
     }
   }
-  for (std::size_t x = 0; x < sizes[0] - 1; ++x) {
-    std::size_t i = (2 * (sizes[1] - 1) + 1) * dy + (2 * x + 1);
-    edges.emplace_back(data[i + 1], i, i + 2);
+  for(std::size_t y = 1; y < 2 * sizes[1]; ++y) {
+    for(std::size_t x = 0; x < sizes[0]; ++x) {
+      std::size_t ref = dy * y + 2 * x;
+      std::size_t i = ref + 1;
+      data[i] = f(data[ref], data[ref + 2]);
+      if (!(y & 1)) {
+        // i is an edge, between 2 squares
+        if (data[ref + 2] < data[ref] && x < sizes[0] - 1) { // super naive
+          ds_parent[ref + 2] = ref;
+          //ds_rank[ref] = 1;
+        } else {
+          edges.emplace_back(data[i], i - dy, i + dy);
+        }
+      } else if (x != 0) {
+        // i is a vertex, between 2 edges
+        if (!(data[ref + 2] < data[ref]) /*&& x < sizes[0] - 1*/) { // super naive
+          ds_parent[ref + 1] = ref - 1;
+          //ds_rank[ref] = 1;
+        } else {
+          edges.emplace_back(data[ref], ref - 1, ref + 1);
+        }
+      }
+    }
   }
-  for (std::size_t y = 0; y < sizes[1] - 1; ++y) {
-      std::size_t i = (2 * y + 1) * dy + (2 * (sizes[0] - 1) + 1);
-      edges.emplace_back(data[i + dy], i, i + 2 * dy);
+#ifdef DEBUG_TRACES
+  std::clog << "data after init\n";
+  for(std::size_t i = 0; i < data.size(); ++i) {
+    std::clog << data[i] << '\t';
+    if ((i+1)%multipliers[1] == 0)
+      std::clog << '\n';
   }
+#endif
+
   auto lt = [](Edge const& e1, Edge const& e2) { return e1.f < e2.f; };
+  { Gudhi::Clock clock("  including sorting");
 #ifdef GUDHI_USE_TBB
   tbb::parallel_sort(edges.begin(), edges.end(), lt);
 #else
   std::sort(edges.begin(), edges.end(), lt);
 #endif
+  std::clog << clock; }
 #ifdef DEBUG_TRACES
   std::clog << "edges\n";
   for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f << '\n'; }
 #endif
+
+  T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
   auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
       std::size_t a = ds.find_set(e.v1);
       std::size_t b = ds.find_set(e.v2);

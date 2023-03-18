@@ -72,9 +72,9 @@ int main() {
       });
   res2.emplace_back(complex_dual.filtration(global_min), std::numeric_limits<double>::infinity());
   std::clog << "Compute persistent homology: " << clock << std::endl;
-  std::sort(res2.begin(), res2.end());
 
 #ifndef ONLY_DUAL
+  std::sort(res2.begin(), res2.end());
   if(res1 != res2) std::exit(-1);
 #endif
 
