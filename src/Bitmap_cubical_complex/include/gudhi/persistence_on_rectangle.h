@@ -41,6 +41,7 @@ namespace Gudhi {
 
 // TODO: specify in the name that the values are for top cells
 // TODO: split out into out0 and out1, or pass the dimension to it.
+// TODO: maybe check if it only works for dimensions[i] >= 3
 template <typename T, typename Lt, typename Out>
 T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<T>& input, Lt&&lt_filt, Out&&out){
   Gudhi::Clock clock;
@@ -76,6 +77,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   boost::disjoint_sets<decltype(ds_rank), decltype(ds_parent)> ds(ds_rank, ds_parent);
   // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
   // Real vertices/squares should be their own cluster at the beginning.
+  ds_rank[0] = 1;
 
   std::clog << "debut: " << clock; clock.begin();
 
@@ -105,37 +107,124 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
 
   }
   std::clog << "fill 1: " << clock; clock.begin();
+  // We try to build some local pairs, so we don't need to sort them. If a vertex/square and an adjacent edge have the same filtration value, we can pair them. For now we only pair things horizontally.
   for(std::size_t y = 1; y < 2 * sizes[1]; ++y) {
-    for(std::size_t x = 0; x < sizes[0]; ++x) {
-      std::size_t ref = dy * y + 2 * x;
-      std::size_t i = ref + 1;
-      data[i] = std::min(data[ref], data[ref + 2], lt_filt);
-      if ((y & 1) == 0) {
+    if ((y & 1) == 0) {
+      std::size_t start_decreasing = 0;
+      std::size_t start_increasing = 0;
+      for(std::size_t x = 0; x < sizes[0]; ++x) {
+        std::size_t ref = dy * y + 2 * x;
+        std::size_t i = ref + 1;
         // i is an edge, between 2 squares
-        if (lt_filt(data[ref + 2], data[ref]) && x < sizes[0] - 1) { // super naive
-          ds_parent[ref + 2] = ref;
-          //ds_rank[ref] = 1;
-        } else {
-          edges.emplace_back(data[i], i - dy, i + dy);
+        if (lt_filt(data[ref + 2], data[ref])) {
+          data[i] = data[ref + 2];
           if (x < sizes[0] - 1) {
-            ds_parent[ref + 2] = ref + 2;
-            ds_birth[ref + 2] = data[ref + 2];
+            if (start_decreasing != 0) {
+              ds_parent[ref + 2] = start_decreasing;
+            } else {
+              ds_parent[ref + 2] = start_decreasing = ref;
+              if (x != 0) {
+                ds_rank[ref] = 1;
+                ds_birth[ref] = data[ref];
+                ds_parent[ref] = ref;
+                if (start_increasing != 0) {
+                  for (std::size_t j = start_increasing; j <= ref; j += 2) {
+                    ds_parent[j] = ref;
+                  }
+                  start_increasing = 0;
+                }
+              }
+            }
+          } else { // last column
+            edges.emplace_back(data[i], i - dy, i + dy);
+            if (start_decreasing == 0) {
+              ds_birth[ref] = data[ref];
+              ds_parent[ref] = ref;
+            }
+            if (start_increasing != 0) {
+              for (std::size_t j = start_increasing; j < ref; j += 2) {
+                ds_parent[j] = ref;
+              }
+              ds_rank[ref] = 1;
+              start_increasing = 0;
+            }
+          }
+        } else {
+          data[i] = data[ref];
+          if (start_decreasing == 0 && x != 0) { // the left square is available for pairing
+            if (start_increasing == 0) start_increasing = ref;
+            //ds_parent[ref] = ref + 2;
+            //ds_rank[ref] = 1; // not true
+            //if (x < sizes[0] - 1) {
+            //  ds_parent[ref + 2] = ref + 2; // too soon
+            //  ds_birth[ref + 2] = data[ref + 2]; // too soon
+            //}
+          } else {
+            edges.emplace_back(data[i], i - dy, i + dy);
+            if (x < sizes[0] - 1) {
+              //ds_parent[ref + 2] = ref + 2; // too soon ?
+              //ds_birth[ref + 2] = data[ref + 2]; // too soon ?
+            }
+            start_decreasing = 0;
           }
         }
-      } else if (x != 0) {
-        // i is a vertex, between 2 edges
-        if (!lt_filt(data[ref + 2], data[ref]) /*&& x < sizes[0] - 1*/) { // super naive
-          ds_parent[ref + 1] = ref - 1;
-          //ds_rank[ref] = 1;
-        } else {
-          edges.emplace_back(data[ref], ref - 1, ref + 1);
-          ds_parent[i] = i;
-          ds_birth[i] = data[i];
+      }
+      if (start_increasing != 0) {
+        for (std::size_t ref = start_increasing; ref < dy * y + 2 * sizes[0]; ref += 2) {
+          ds_parent[ref] = 0;
         }
-      } else {
-        // i is a left-most vertex
-        ds_parent[i] = i;
-        ds_birth[i] = data[i];
+      }
+    } else {
+      std::size_t start_decreasing = 0;
+      std::size_t start_increasing = 0;
+      for(std::size_t x = 0; x < sizes[0]; ++x) {
+        assert(start_decreasing * start_increasing == 0);
+        std::size_t ref = dy * y + 2 * x;
+        std::size_t i = ref + 1;
+        data[i] = std::min(data[ref], data[ref + 2], lt_filt);
+        if (x != 0) {
+          // i is a vertex, between 2 edges
+          if (!lt_filt(data[ref + 2], data[ref])) { // increasing
+            if (start_decreasing == 0) {
+              if (start_increasing != 0) {
+                ds_parent[ref + 1] = start_increasing;
+                //ds_rank[ref] = 1;
+              } else {
+                ds_parent[ref + 1] = start_increasing = ref - 1;
+                //ds_rank[ref] = 1;
+              }
+            }
+            else {
+              ds_parent[i] = i;
+              ds_birth[i] = data[i];
+              ds_rank[i] = 1;
+              start_decreasing = 0;
+            }
+          } else { // decreasing
+            if (x < sizes[0] - 1) {
+              ds_parent[ref + 1] = ref + 3;
+              if (start_decreasing == 0) {
+                start_decreasing = ref + 1;
+                edges.emplace_back(data[ref], ref - 1, ref + 1);
+                start_increasing = 0;
+              }
+            } else {
+              if (start_decreasing == 0)
+                edges.emplace_back(data[ref], ref - 1, ref + 1);
+              ds_parent[i] = i;
+              ds_birth[i] = data[i];
+            }
+          }
+        } else { // take this out of the loop
+          // i is a left-most vertex
+          if (lt_filt(data[ref + 2], data[ref])) { 
+            ds_parent[ref + 1] = ref + 3;
+            start_decreasing = ref + 1;
+          } else {
+            ds_parent[i] = i;
+            ds_birth[i] = data[i];
+          }
+        }
       }
     }
   }
