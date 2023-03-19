@@ -43,40 +43,28 @@ namespace Gudhi {
 // TODO: split out into out0 and out1, or pass the dimension to it.
 template <typename T, typename Lt, typename Out>
 T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<T>& input, Lt&&lt_filt, Out&&out){
-  //this->set_up_containers(sizes, true);
+  Gudhi::Clock clock;
 
-  const std::vector<std::size_t> sizes { dimensions[0] - 1, dimensions[1] - 1 };
-  const std::size_t dy = 2 * sizes[0] + 1;
-  std::vector<T> data(dy * (2 * sizes[1] + 1), std::numeric_limits<T>::infinity()); // the initial value does not matter, use new/make_unique_for_overwrite instead of vector.
+  GUDHI_CHECK(dimensions.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
   GUDHI_CHECK(dimensions[0] * dimensions[1] == input.size(),
       std::invalid_argument("Number of cells inconsistent with dimensions"));
+  const std::vector<std::size_t> sizes { dimensions[0] - 1, dimensions[1] - 1 };
+  const std::size_t dy = 2 * sizes[0] + 1;
+  const std::size_t data_size = dy * (2 * sizes[1] + 1);
+  std::unique_ptr<T[]> data(new T[data_size]); // std::make_unique_for_overwrite
 
-  GUDHI_CHECK(std::accumulate(std::begin(dimensions), std::end(dimensions),
-                              (std::size_t)1, std::multiplies<std::size_t>()) == input.size(),
-              std::invalid_argument("Number of cells inconsistent with dimensions"));
-  std::size_t input_idx = 0;
-  for(std::size_t y = 0; y < sizes[1] + 1; ++y) {
-    for(std::size_t x = 0; x < sizes[0] + 1; ++x)
-      data[dy * 2 * y + 2 * x] = input[input_idx++];
-  }
-
-  Gudhi::Clock clock;
-  GUDHI_CHECK(sizes.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
   // Only parent is needed on all nodes, rank and birth are only meaningful on cluster representatives. We could
   // store them in an unordered_map, but this would only save memory if we interleave vertex and edge insertion,
   // which is more complicated and probably slower.
-
   struct Pers2d_cluster_data {
     std::size_t parent;
     std::size_t rank;
     // The rank heuristic in union-find means that the representative may not be the same as defined by persistent
     // homology, so we store this one as well.
-    // We could skip an indirection, store data[birth], and output 2 T instead of 2 size_t,
-    // it would save 12% of the time if we only care about the diagram.
     T birth;
   };  // information on a cluster
-  std::vector<Pers2d_cluster_data> ds_base((data.size() + 1) / 2); // TODO: tighten this number a bit
+  std::vector<Pers2d_cluster_data> ds_base((data_size + 1) / 2); // TODO: tighten this number a bit
   // boost::vector_property_map does resize(size+1) for every new element, don't use it
   auto ds_data =
       boost::make_function_property_map<std::size_t>([&ds_base](std::size_t n) -> Pers2d_cluster_data&
@@ -86,9 +74,10 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   auto ds_rank = boost::make_transform_value_property_map([](auto& p) -> std::size_t& { return p.rank; }, ds_data);
   auto ds_birth = boost::make_transform_value_property_map([](auto& p) -> T& { return p.birth; }, ds_data);
   boost::disjoint_sets<decltype(ds_rank), decltype(ds_parent)> ds(ds_rank, ds_parent);
+  // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
+  // Real vertices/squares should be their own cluster at the beginning.
 
   std::clog << "debut: " << clock; clock.begin();
-  std::clog << "init: " << clock; clock.begin();
 
   struct Edge {
     T f;
@@ -100,31 +89,38 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
     e.v1 = e.v2 - diag;
     e.v2 = new_v2;
   };
-  std::vector<Edge> edges; edges.reserve(data.size() / 2); // TODO: tighten this number a bit
+  std::vector<Edge> edges; edges.reserve(data_size / 2); // TODO: tighten this number a bit
 
   // TODO: build many local pairs and omit them from the list of edges.
-  auto f = [&lt_filt](T a, T b){return std::min(a, b, lt_filt);};
+
   for(std::size_t x = 0; x < sizes[0] + 1; ++x) {
+    data[2 * x] = input[x];
     for(std::size_t y = 0; y < sizes[1]; ++y) {
       std::size_t ref = 2 * x + dy * 2 * y;
       std::size_t e = ref + dy;
-      data[e] = f(data[ref], data[ref + 2 * dy]);
+      data[ref + 2 * dy] = input[x + (sizes[0] + 1) * (y + 1)];
+      data[e] = std::min(input[x + (sizes[0] + 1) * y], data[ref + 2 * dy], lt_filt);
       //if (x != 0 && x != sizes[0]) edges.emplace_back(data[e], e - 1, e + 1);
     }
+
   }
   std::clog << "fill 1: " << clock; clock.begin();
   for(std::size_t y = 1; y < 2 * sizes[1]; ++y) {
     for(std::size_t x = 0; x < sizes[0]; ++x) {
       std::size_t ref = dy * y + 2 * x;
       std::size_t i = ref + 1;
-      data[i] = f(data[ref], data[ref + 2]);
-      if (!(y & 1)) {
+      data[i] = std::min(data[ref], data[ref + 2], lt_filt);
+      if ((y & 1) == 0) {
         // i is an edge, between 2 squares
         if (lt_filt(data[ref + 2], data[ref]) && x < sizes[0] - 1) { // super naive
           ds_parent[ref + 2] = ref;
           //ds_rank[ref] = 1;
         } else {
           edges.emplace_back(data[i], i - dy, i + dy);
+          if (x < sizes[0] - 1) {
+            ds_parent[ref + 2] = ref + 2;
+            ds_birth[ref + 2] = data[ref + 2];
+          }
         }
       } else if (x != 0) {
         // i is a vertex, between 2 edges
@@ -133,19 +129,17 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
           //ds_rank[ref] = 1;
         } else {
           edges.emplace_back(data[ref], ref - 1, ref + 1);
+          ds_parent[i] = i;
+          ds_birth[i] = data[i];
         }
+      } else {
+        // i is a left-most vertex
+        ds_parent[i] = i;
+        ds_birth[i] = data[i];
       }
     }
   }
-  // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
-  // Real vertices/squares should be their own cluster at the beginning.
-  for (std::size_t y = 1; y < 2 * sizes[1]; ++y)
-    for (std::size_t x = 2 - (y & 1); x < 2 * sizes[0]; x += 2) {
-      std::size_t i = y * dy + x;
-      if (ds_parent[i] != 0) continue;
-      ds_parent[i] = i;
-      ds_birth[i] = data[i];
-    }
+  std::clog << "fill 2: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
   std::clog << "ds_data\n";
   for(std::size_t i=0;i<ds_base.size();++i) {
@@ -155,13 +149,12 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
 #endif
 #ifdef DEBUG_TRACES
   std::clog << "data after init\n";
-  for(std::size_t i = 0; i < data.size(); ++i) {
+  for(std::size_t i = 0; i < data_size; ++i) {
     std::clog << data[i] << '\t';
     if ((i+1)%dy == 0)
       std::clog << '\n';
   }
 #endif
-  std::clog << "fill 2: " << clock; clock.begin();
 
   auto lt_edge = [&lt_filt](Edge const& e1, Edge const& e2) { return lt_filt(e1.f, e2.f); };
 #ifdef GUDHI_USE_TBB

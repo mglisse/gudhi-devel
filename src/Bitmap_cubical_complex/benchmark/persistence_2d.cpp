@@ -68,7 +68,7 @@ int main() {
       if (b < d) res2.emplace_back(b, d);
       });
   res2.emplace_back(global_min, std::numeric_limits<double>::infinity());
-  std::clog << "Total new code: " << clock;
+  std::clog << "Total new code: " << clock << std::endl;
 
 #ifndef ONLY_DUAL
   std::sort(res2.begin(), res2.end());
