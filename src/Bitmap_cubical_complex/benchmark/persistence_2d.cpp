@@ -38,6 +38,7 @@ int main() {
 
   Gudhi::Clock clock;
 #ifndef ONLY_DUAL
+  Gudhi::Clock clock_old;
   Cubical complex_from_top_cells(sizes, data, true);
   std::clog << "Construction from top cells: " << clock;
 
@@ -50,17 +51,15 @@ int main() {
   Gudhi::persistent_cohomology::Persistent_cohomology<Cubical, Field_Zp> pers(complex_from_top_cells);
   pers.init_coefficients(2);
   pers.compute_persistent_cohomology();
-  std::clog << "Compute persistent homology: " << clock << std::endl;
+  std::clog << "Compute persistent homology: " << clock;
   std::vector<std::pair<double, double>> res1;
   for (auto p: pers.get_persistent_pairs()){
     res1.emplace_back(complex_from_top_cells.filtration(std::get<0>(p)), complex_from_top_cells.filtration(std::get<1>(p)));
   }
+  std::clog << "Total old code: " << clock_old;
   std::sort(res1.begin(), res1.end());
 #endif
 
-
-  clock.begin();
-  std::clog << "Dual construction from top cells: " << clock;
 
   clock.begin();
   std::vector<std::pair<double, double>> res2;
@@ -69,7 +68,7 @@ int main() {
       if (b < d) res2.emplace_back(b, d);
       });
   res2.emplace_back(global_min, std::numeric_limits<double>::infinity());
-  std::clog << "Compute persistent homology: " << clock << std::endl;
+  std::clog << "Total new code: " << clock;
 
 #ifndef ONLY_DUAL
   std::sort(res2.begin(), res2.end());
