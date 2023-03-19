@@ -12,6 +12,7 @@
 #define BITMAP_CUBICAL_COMPLEX_BASE_H_
 
 #include <gudhi/Debug_utils.h>
+#include <gudhi/Clock.h>
 
 #include <boost/config.hpp>
 #include <boost/iterator/counting_iterator.hpp>
@@ -1096,6 +1097,7 @@ void Bitmap_cubical_complex_base<T>::propagate_from_vertices_rec (int special_di
 template <typename T>
 template <class Out>
 std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
+  Gudhi::Clock clock;
   GUDHI_CHECK(sizes.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
   const std::size_t dy = multipliers[1];
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
@@ -1123,6 +1125,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
   auto ds_birth = boost::make_transform_value_property_map([](auto& p) -> std::size_t& { return p.birth; }, ds_data);
   boost::disjoint_sets<decltype(ds_rank), decltype(ds_parent)> ds(ds_rank, ds_parent);
 
+  std::clog << "debut: " << clock; clock.begin();
   // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
   // Real vertices/squares should be their own cluster at the beginning.
   for (std::size_t y = 1; y < 2 * sizes[1]; ++y)
@@ -1139,6 +1142,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
     std::clog << i << '\t' << dat.parent << '\t' << dat.birth << '\n';
   }
 #endif
+  std::clog << "init: " << clock; clock.begin();
 
   struct Edge {
     T f;
@@ -1162,6 +1166,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
       //if (x != 0 && x != sizes[0]) edges.emplace_back(data[e], e - 1, e + 1);
     }
   }
+  std::clog << "fill 1: " << clock; clock.begin();
   for(std::size_t y = 1; y < 2 * sizes[1]; ++y) {
     for(std::size_t x = 0; x < sizes[0]; ++x) {
       std::size_t ref = dy * y + 2 * x;
@@ -1194,15 +1199,15 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
       std::clog << '\n';
   }
 #endif
+  std::clog << "fill 2: " << clock; clock.begin();
 
   auto lt = [](Edge const& e1, Edge const& e2) { return e1.f < e2.f; };
-  { Gudhi::Clock clock("  including sorting");
 #ifdef GUDHI_USE_TBB
   tbb::parallel_sort(edges.begin(), edges.end(), lt);
 #else
   std::sort(edges.begin(), edges.end(), lt);
 #endif
-  std::clog << clock; }
+  std::clog << "sort: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
   std::clog << "edges\n";
   for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f << '\n'; }
@@ -1232,6 +1237,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
       return true;
       });
   edges.erase(it, edges.end());
+  std::clog << "primal pass: " << clock; clock.begin();
   for (auto e : boost::adaptors::reverse(edges)) {
 #ifdef DEBUG_TRACES
     std::clog << "reprocessing edge " << e.v1 << '-' << e.v2 << '\n';
@@ -1258,6 +1264,7 @@ std::size_t Bitmap_cubical_complex_base<T>::persistence_2d_dual(Out&&out){
     out((e.v1 + e.v2) / 2, ds_birth[b]);
     ds_birth[newrep] = ds_birth[a];
   }
+  std::clog << "dual pass: " << clock;
 
   data[0] = save_data_0;
   return ds_birth[ds.find_set(dy + 1)];

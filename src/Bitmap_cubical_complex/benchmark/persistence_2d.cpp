@@ -30,7 +30,6 @@ double get_random()
 int main() {
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex_base<double> Base;
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex<Base> Cubical;
-  using Field_Zp = Gudhi::persistent_cohomology::Field_Zp;
 
   std::vector<unsigned> sizes {1000, 999};
   std::vector<double> data(sizes[0] * sizes[1]);
@@ -46,6 +45,7 @@ int main() {
   std::clog << "initialize_filtration: " << clock;
 
   clock.begin();
+  using Field_Zp = Gudhi::persistent_cohomology::Field_Zp;
   Gudhi::persistent_cohomology::Persistent_cohomology<Cubical, Field_Zp> pers(complex_from_top_cells);
   pers.init_coefficients(2);
   pers.compute_persistent_cohomology();
@@ -75,7 +75,10 @@ int main() {
 
 #ifndef ONLY_DUAL
   std::sort(res2.begin(), res2.end());
-  if(res1 != res2) std::exit(-1);
+  if(res1 != res2) {
+    std::cerr << "Bug!\n";
+    std::exit(-1);
+  }
 #endif
 
   return 0;
