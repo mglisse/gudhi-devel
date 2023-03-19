@@ -41,8 +41,8 @@ namespace Gudhi {
 
 // TODO: specify in the name that the values are for top cells
 // TODO: split out into out0 and out1, or pass the dimension to it.
-template <typename T, class Out>
-T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<T>& input, Out&&out){
+template <typename T, typename Lt, typename Out>
+T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<T>& input, Lt&&lt_filt, Out&&out){
   //this->set_up_containers(sizes, true);
 
   const std::vector<std::size_t> sizes { dimensions[0] - 1, dimensions[1] - 1 };
@@ -103,7 +103,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   std::vector<Edge> edges; edges.reserve(data.size() / 2); // TODO: tighten this number a bit
 
   // TODO: build many local pairs and omit them from the list of edges.
-  auto f = [](T a, T b){return std::min(a, b);};
+  auto f = [&lt_filt](T a, T b){return std::min(a, b, lt_filt);};
   for(std::size_t x = 0; x < sizes[0] + 1; ++x) {
     for(std::size_t y = 0; y < sizes[1]; ++y) {
       std::size_t ref = 2 * x + dy * 2 * y;
@@ -120,7 +120,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
       data[i] = f(data[ref], data[ref + 2]);
       if (!(y & 1)) {
         // i is an edge, between 2 squares
-        if (data[ref + 2] < data[ref] && x < sizes[0] - 1) { // super naive
+        if (lt_filt(data[ref + 2], data[ref]) && x < sizes[0] - 1) { // super naive
           ds_parent[ref + 2] = ref;
           //ds_rank[ref] = 1;
         } else {
@@ -128,7 +128,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
         }
       } else if (x != 0) {
         // i is a vertex, between 2 edges
-        if (!(data[ref + 2] < data[ref]) /*&& x < sizes[0] - 1*/) { // super naive
+        if (!lt_filt(data[ref + 2], data[ref]) /*&& x < sizes[0] - 1*/) { // super naive
           ds_parent[ref + 1] = ref - 1;
           //ds_rank[ref] = 1;
         } else {
@@ -163,11 +163,11 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
 #endif
   std::clog << "fill 2: " << clock; clock.begin();
 
-  auto lt = [](Edge const& e1, Edge const& e2) { return e1.f < e2.f; };
+  auto lt_edge = [&lt_filt](Edge const& e1, Edge const& e2) { return lt_filt(e1.f, e2.f); };
 #ifdef GUDHI_USE_TBB
-  tbb::parallel_sort(edges.begin(), edges.end(), lt);
+  tbb::parallel_sort(edges.begin(), edges.end(), lt_edge);
 #else
-  std::sort(edges.begin(), edges.end(), lt);
+  std::sort(edges.begin(), edges.end(), lt_edge);
 #endif
   std::clog << "sort: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
@@ -175,7 +175,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f << '\n'; }
 #endif
 
-  // FIXME: is that robust enough?
+  // FIXME: is that robust enough? At least make it an argument to the function.
   ds_birth[0] = std::numeric_limits<T>::infinity();
   //T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
   auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
@@ -185,7 +185,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
       std::clog << "processing edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
       if (a == b) return false;
-      if (ds_birth[a] > ds_birth[b]) std::swap(a, b);
+      if (lt_filt(ds_birth[b], ds_birth[a])) std::swap(a, b);
       // ds.link(a, b); std::size_t newrep = ds.find_set(a);
       std::size_t rank_a = ds_rank[a];
       std::size_t& rank_b = ds_rank[b];
@@ -214,7 +214,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
 #endif
     GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
     // We could check here if a or b is 0.
-    if (ds_birth[a] < ds_birth[b]) std::swap(a, b);
+    if (lt_filt(ds_birth[a], ds_birth[b])) std::swap(a, b);
     // ds.link(a, b); std::size_t newrep = ds.find_set(a);
     std::size_t rank_a = ds_rank[a];
     std::size_t& rank_b = ds_rank[b];
