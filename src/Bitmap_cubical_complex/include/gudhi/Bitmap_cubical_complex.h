@@ -85,10 +85,6 @@ class Bitmap_cubical_complex : public T {
       : T(dimensions, cells, input_top_cells), key_associated_to_simplex(num_simplices()) {
   }
 
-  Bitmap_cubical_complex(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& cells, Dual_from_vertices)
-    : T(dimensions, cells, Dual_from_vertices()) {}
-
-
   /**
    * @param[in] dimensions The shape that should be used to interpret `cells` (in Fortran order).
    * @param[in] cells The filtration values of the top-dimensional cells if `input_top_cells` is `true`,

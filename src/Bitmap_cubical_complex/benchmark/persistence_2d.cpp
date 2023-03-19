@@ -11,6 +11,7 @@
 #include <gudhi/Clock.h>
 #include <gudhi/Bitmap_cubical_complex.h>
 #include <gudhi/Persistent_cohomology.h>
+#include <gudhi/persistence_on_rectangle.h>
 
 #include <vector>
 #include <cstdlib>
@@ -59,18 +60,15 @@ int main() {
 
 
   clock.begin();
-  Cubical complex_dual(sizes, data, Gudhi::cubical_complex::Dual_from_vertices());
   std::clog << "Dual construction from top cells: " << clock;
 
   clock.begin();
   std::vector<std::pair<double, double>> res2;
-  std::size_t global_min = complex_dual.persistence_2d_dual([&complex_dual, &res2](std::size_t b, std::size_t d)
+  double global_min = Gudhi::persistence_on_rectangle(sizes, data, [&res2](double b, double d)
       {
-      double bf = complex_dual.filtration(b);
-      double df = complex_dual.filtration(d);
-      if (bf < df) res2.emplace_back(bf, df);
+      if (b < d) res2.emplace_back(b, d);
       });
-  res2.emplace_back(complex_dual.filtration(global_min), std::numeric_limits<double>::infinity());
+  res2.emplace_back(global_min, std::numeric_limits<double>::infinity());
   std::clog << "Compute persistent homology: " << clock << std::endl;
 
 #ifndef ONLY_DUAL
