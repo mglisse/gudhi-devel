@@ -105,12 +105,13 @@ U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   // TODO: build many local pairs and omit them from the list of edges.
 
   for(std::size_t x = 0; x < sizes[0] + 1; ++x) {
-    data[2 * x] = std::pair(input[x], 2 * x); // FIXME: use index in input instead?
+    data[2 * x] = std::pair(input[x], x); // FIXME: use index in input instead?
     for(std::size_t y = 0; y < sizes[1]; ++y) {
       std::size_t cub1 = 2 * x + dy * 2 * y;
       std::size_t e = cub1 + dy;
       std::size_t cub2 = e + dy;
-      data[cub2] = std::pair(input[x + (sizes[0] + 1) * (y + 1)], cub2);
+      std::size_t i = x + (sizes[0] + 1) * (y + 1);
+      data[cub2] = std::pair(input[i], i);
       data[e] = std::min(data[cub1], data[cub2]);
     }
   }
