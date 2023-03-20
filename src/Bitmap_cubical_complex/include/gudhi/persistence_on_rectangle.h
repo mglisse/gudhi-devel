@@ -42,6 +42,7 @@ namespace Gudhi {
 // TODO: specify in the name that the values are for top cells
 // TODO: split out into out0 and out1, or pass the dimension to it.
 // TODO: maybe check if it only works for dimensions[i] >= 3
+// TODO: make it possible to choose if we want to output a value or an index into input
 template <class Filtration_value>
 struct Persistence_on_rectangle {
   typedef std::pair<Filtration_value,std::size_t> T;
