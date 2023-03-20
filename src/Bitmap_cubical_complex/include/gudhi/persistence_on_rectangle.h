@@ -79,8 +79,8 @@ struct Persistence_on_rectangle {
       v = ds_parent(old);
     }
     return ancestor;
-#elif 0
-    // Path halving, best in my experiments
+#elif 1
+    // Path halving
     std::size_t parent = ds_parent(v);
     std::size_t grandparent = ds_parent(parent);
     while (parent != grandparent)
@@ -91,7 +91,7 @@ struct Persistence_on_rectangle {
       grandparent = ds_parent(parent);
     }
     return parent;
-#elif 0
+#elif 1
     // Path splitting
     std::size_t parent = ds_parent(v);
     std::size_t grandparent = ds_parent(parent);
