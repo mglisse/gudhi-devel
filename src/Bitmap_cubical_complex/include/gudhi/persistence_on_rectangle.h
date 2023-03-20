@@ -140,7 +140,8 @@ struct Persistence_on_rectangle {
     T f;
     std::size_t v1, v2; // v1 < v2
     Edge(T f, std::size_t v1, std::size_t v2) : f(f), v1(v1), v2(v2) {}
-    bool operator<(Edge const& other) const { return f.first < other.f.first; }
+    Filtration_value filt() const { return f.first; }
+    bool operator<(Edge const& other) const { return filt() < other.filt(); }
   };
   void dualize_edge(Edge& e) const {
     std::size_t new_v2 = e.v1 + (dy + 1);
@@ -360,7 +361,7 @@ struct Persistence_on_rectangle {
     std::clog << "sort: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
     std::clog << "edges\n";
-    for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f.first << '\t' << e.f.second << '\n'; }
+    for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.filt() << '\t' << e.f.second << '\n'; }
 #endif
   }
   template<class Out>
@@ -374,7 +375,7 @@ struct Persistence_on_rectangle {
         if (a == b) return false;
         if (data[b] < data[a]) std::swap(a, b);
         ds_parent(b) = a;
-        out(data[b].first, e.f.first);
+        out(data[b].first, e.filt());
         return true;
     });
     edges.erase(it, edges.end());
@@ -396,7 +397,7 @@ struct Persistence_on_rectangle {
       // We could check here if a or b is 0.
       if (data[a] < data[b]) std::swap(a, b);
       ds_parent(b) = a;
-      out(e.f.first, data[b].first);
+      out(e.filt(), data[b].first);
     }
     std::clog << "dual pass: " << clock;
   }
