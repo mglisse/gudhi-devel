@@ -45,7 +45,17 @@ namespace Gudhi {
 // TODO: make it possible to choose if we want to output a value or an index into input
 template <class Filtration_value>
 struct Persistence_on_rectangle {
-  typedef std::pair<Filtration_value,std::size_t> T;
+  // If we want to save space, we don't have to store the redundant 'first'
+  // field in T. Removing it even speeds up the pairing. However, it slows down
+  // filling and the primal/dual passes, resulting in a global slow down (but
+  // not horrible).
+
+  // std::pair has a bad implementation (constrained by compatibility) in some libraries.
+  // typedef std::pair<Filtration_value,std::size_t> T;
+  struct T {
+    Filtration_value first; std::size_t second;
+    bool operator<(T const& other) const { return std::tie(first, second) < std::tie(other.first, other.second); }
+  };
   std::vector<Filtration_value> const* input_p;
   std::size_t size_x, size_y, dy, data_size;
   std::unique_ptr<T[]> data;
@@ -152,15 +162,20 @@ struct Persistence_on_rectangle {
   std::vector<Edge> edges;
 
   Filtration_value input(std::size_t i) const { return (*input_p)[i]; }
+  void set_data(std::size_t cell, std::size_t i) {
+    data[cell] = T{ input(i), i };
+  }
+
   void fill_data_from_input() {
+    // TODO: see if copying input in a separate loop (for-y for-x) has better memory efficiency, or if we can even swap the 2 'for' in this loop (merging with the next loop may be too much).
     for(std::size_t x = 0; x < size_x + 1; ++x) {
-      data[2 * x] = std::pair(input(x), x);
+      set_data(2 * x, x);
       for(std::size_t y = 0; y < size_y; ++y) {
         std::size_t cub1 = 2 * x + dy * 2 * y;
         std::size_t e = cub1 + dy;
         std::size_t cub2 = e + dy;
         std::size_t i = x + (size_x + 1) * (y + 1);
-        data[cub2] = std::pair(input(i), i);
+        set_data(cub2, i);
         data[e] = std::min(data[cub1], data[cub2]);
       }
     }
@@ -188,8 +203,9 @@ struct Persistence_on_rectangle {
   auto id(std::size_t i){return data[i].second;};
   void pair_internal(){
     // Internal cubes
-    for(std::size_t x = 1; x < size_x; ++x) {
-      for(std::size_t y = 1; y < size_y; ++y) {
+    for(std::size_t y = 1; y < size_y; ++y) {
+      for(std::size_t x = 1; x < size_x; ++x) {
+        // TODO: see if testing edges first helps
         std::size_t cub = 2 * x + dy * 2 * y;
         auto ff = data[cub];
         auto f = ff.second;
@@ -395,7 +411,8 @@ struct Persistence_on_rectangle {
       std::clog << "i.e. dual edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
-      // We could check here if a or b is 0.
+      // We could check here if a or b is 0, it would be more robust in case the input contains inf.
+      // if (b == 0 || (a != 0 && lt_data()(data[a], data[b]))) std::swap(a, b);
       if (data[a] < data[b]) std::swap(a, b);
       ds_parent(b) = a;
       out(e.filt(), data[b].first);
