@@ -67,7 +67,7 @@ int main() {
 
   clock.begin();
   std::vector<std::pair<double, double>> res2;
-  double global_min = Gudhi::persistence_on_rectangle(sizes, data, std::less<double>(), [&res2](double b, double d)
+  double global_min = Gudhi::persistence_on_rectangle(sizes, data, [&res2](double b, double d)
       {
       if (b < d) res2.emplace_back(b, d);
       });

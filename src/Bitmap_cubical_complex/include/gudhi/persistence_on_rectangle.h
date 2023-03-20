@@ -42,8 +42,8 @@ namespace Gudhi {
 // TODO: specify in the name that the values are for top cells
 // TODO: split out into out0 and out1, or pass the dimension to it.
 // TODO: maybe check if it only works for dimensions[i] >= 3
-template <typename U, typename Lt, typename Out>
-U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Lt&&lt_filt, Out&&out){
+template <typename U, typename Out>
+U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out&&out){
 #ifdef DEBUG_TRACES
   std::clog << "input\n";
   for(std::size_t i=0;i<input.size();++i) {
