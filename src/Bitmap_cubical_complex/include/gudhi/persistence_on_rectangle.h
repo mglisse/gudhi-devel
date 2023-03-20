@@ -49,23 +49,12 @@ struct Persistence_on_rectangle {
   std::size_t size_x, size_y, dy, data_size;
   std::unique_ptr<T[]> data;
 
+  // Information on a cluster
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
-  // Only parent is needed on all nodes, rank and birth are only meaningful on cluster representatives. We could
-  // store them in an unordered_map, but this would only save memory if we interleave vertex and edge insertion,
-  // which is more complicated and probably slower.
-  struct Pers2d_cluster_data {
-    std::size_t parent;
-    std::size_t rank;
-    // The rank heuristic in union-find means that the representative may not be the same as defined by persistent
-    // homology, so we store this one as well.
-    T birth;
-  };  // information on a cluster
-  std::vector<Pers2d_cluster_data> ds_base;
-  // boost::vector_property_map does resize(size+1) for every new element, don't use it
-  Pers2d_cluster_data& ds_data(std::size_t n) { return ds_base[n/2]; } // n is already even
-  std::size_t& ds_parent(std::size_t n) { return ds_data(n).parent; }
-  std::size_t& ds_rank(std::size_t n) { return ds_data(n).rank; }
-  T& ds_birth(std::size_t n) { return ds_data(n).birth; }
+  // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
+  // We thus use the same representative for disjoint-sets and persistence (the minimum).
+  std::vector<std::size_t> ds_parent_;
+  std::size_t& ds_parent(std::size_t n) { return ds_parent_[n / 2]; }
   Gudhi::Clock clock;
 
   std::size_t ds_find_set(std::size_t v) {
@@ -90,7 +79,7 @@ struct Persistence_on_rectangle {
       v = ds_parent(old);
     }
     return ancestor;
-#elif 1
+#elif 0
     // Path halving, best in my experiments
     std::size_t parent = ds_parent(v);
     std::size_t grandparent = ds_parent(parent);
@@ -102,7 +91,7 @@ struct Persistence_on_rectangle {
       grandparent = ds_parent(parent);
     }
     return parent;
-#elif 1
+#elif 0
     // Path splitting
     std::size_t parent = ds_parent(v);
     std::size_t grandparent = ds_parent(parent);
@@ -139,14 +128,12 @@ struct Persistence_on_rectangle {
     dy = 2 * size_x + 1;
     data_size = dy * (2 * size_y + 1);
     data.reset(new T[data_size]); // Could be std::vector, but the initialization is useless
-    ds_base.resize((data_size + 1) / 2); // TODO: tighten this number a bit
-    // Everything has rank 0 and has cell 0 (the infinite exterior cell) as representative by default.
+    ds_parent_.resize((data_size + 1) / 2); // TODO: tighten this number a bit
+    // Everything has cell 0 (the infinite exterior cell) as representative by default.
     // Real vertices/squares should be their own cluster at the beginning.
-    ds_rank(0) = 1;
     edges.reserve(data_size / 2); // TODO: tighten this number a bit
     // FIXME: is that robust enough? At least make it an argument to the function.
     //T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
-    ds_birth(0).first = std::numeric_limits<Filtration_value>::infinity();
     std::clog << "init: " << clock; clock.begin();
   }
   struct Edge {
@@ -183,6 +170,8 @@ struct Persistence_on_rectangle {
         data[i] = std::min(data[ref], data[ref + 2]);
       }
     }
+    // FIXME: is that robust enough?
+    data[0].first = std::numeric_limits<Filtration_value>::infinity();
     std::clog << "fill 2: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
     std::clog << "data\n";
@@ -228,7 +217,6 @@ struct Persistence_on_rectangle {
           } else {
             // the whole neighborhood has value f
             ds_parent(cub-dy-1) = cub-dy-1;
-            ds_birth(cub-dy-1) = data[cub-dy-1];
             ds_parent(cub) = cub - 2;
             continue;
           }
@@ -267,7 +255,6 @@ struct Persistence_on_rectangle {
         }
         if (!cub_paired) {
           ds_parent(cub) = cub;
-          ds_birth(cub) = data[cub];
         }
       }
     }
@@ -283,7 +270,6 @@ struct Persistence_on_rectangle {
         ds_parent(cub+dy-1) = cub+dy+1;
         if (f == id(cub+dy+1)) {
           ds_parent(cub+dy+1) = cub+dy+1;
-          ds_birth(cub+dy+1) = data[cub+dy+1];
         }
       } else if (f == id(cub+dy+1)) {
         ds_parent(cub+dy+1) = cub+dy-1;
@@ -299,7 +285,6 @@ struct Persistence_on_rectangle {
         ds_parent(cub-dy-1) = cub-dy+1;
         if (f == id(cub-dy+1)) {
           ds_parent(cub-dy+1) = cub-dy+1;
-          ds_birth(cub-dy+1) = data[cub-dy+1];
         }
       } else if (f == id(cub-dy+1)) {
         ds_parent(cub-dy+1) = cub-dy-1;
@@ -315,7 +300,6 @@ struct Persistence_on_rectangle {
         ds_parent(cub+dy+1) = cub-dy+1;
         if (f == id(cub-dy+1)) {
           ds_parent(cub-dy+1) = cub-dy+1;
-          ds_birth(cub-dy+1) = data[cub-dy+1];
         }
       } else if (f == id(cub-dy+1)) {
         ds_parent(cub-dy+1) = cub+dy+1;
@@ -331,7 +315,6 @@ struct Persistence_on_rectangle {
         ds_parent(cub+dy-1) = cub-dy-1;
         if (f == id(cub-dy-1)) {
           ds_parent(cub-dy-1) = cub-dy-1;
-          ds_birth(cub-dy-1) = data[cub-dy-1];
         }
       } else if (f == id(cub-dy-1)) {
         ds_parent(cub-dy-1) = cub+dy-1;
@@ -344,32 +327,27 @@ struct Persistence_on_rectangle {
     std::size_t vi = dy + 1;
     if (id(vc) == id(vi)) {
       ds_parent(vi) = vi;
-      ds_birth(vi) = data[vi];
     }
     vc = 2 * size_x;
     vi = vc + dy - 1;
     if (id(vc) == id(vi)) {
       ds_parent(vi) = vi;
-      ds_birth(vi) = data[vi];
     }
     vc = 2 * dy * size_y;
     vi = vc - dy + 1;
     if (id(vc) == id(vi)) {
       ds_parent(vi) = vi;
-      ds_birth(vi) = data[vi];
     }
     vc = 2 * size_x + 2 * dy * size_y;
     vi = vc - dy - 1;
     if (id(vc) == id(vi)) {
       ds_parent(vi) = vi;
-      ds_birth(vi) = data[vi];
     }
     std::clog << "pair boundary: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
-    std::clog << "ds_data after pairing\n";
-    for(std::size_t i=0;i<ds_base.size();++i) {
-      auto&dat=ds_base(i);
-      std::clog << i << '\t' << dat.parent << '\t' << dat.birth.first << '\t' << dat.birth.second << '\n';
+    std::clog << "ds_parent after pairing\n";
+    for(std::size_t i = 0; i < ds_parent_.size(); ++i) {
+      std::clog << i << '\t' << ds_parent_[i] << '\n';
     }
 #endif
   }
@@ -394,19 +372,9 @@ struct Persistence_on_rectangle {
         std::clog << "processing edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
         if (a == b) return false;
-        if (ds_birth(b) < ds_birth(a)) std::swap(a, b);
-        // ds_link(a, b); std::size_t newrep = ds_find_set(a);
-        std::size_t rank_a = ds_rank(a);
-        std::size_t& rank_b = ds_rank(b);
-        std::size_t newrep = a;
-        if (rank_a > rank_b) ds_parent(b) = a;
-        else {
-        ds_parent(a) = b;
-        newrep = b;
-        if (rank_a == rank_b) ++rank_b;
-        }
-        out(ds_birth(b).first, e.f.first);
-        ds_birth(newrep) = ds_birth(a);
+        if (data[b] < data[a]) std::swap(a, b);
+        ds_parent(b) = a;
+        out(data[b].first, e.f.first);
         return true;
     });
     edges.erase(it, edges.end());
@@ -426,24 +394,14 @@ struct Persistence_on_rectangle {
 #endif
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
       // We could check here if a or b is 0.
-      if (ds_birth(a) < ds_birth(b)) std::swap(a, b);
-      // ds_link(a, b); std::size_t newrep = ds_find_set(a);
-      std::size_t rank_a = ds_rank(a);
-      std::size_t& rank_b = ds_rank(b);
-      std::size_t newrep = a;
-      if (rank_a > rank_b) ds_parent(b) = a;
-      else {
-        ds_parent(a) = b;
-        newrep = b;
-        if (rank_a == rank_b) ++rank_b;
-      }
-      out(e.f.first, ds_birth(b).first);
-      ds_birth(newrep) = ds_birth(a);
+      if (data[a] < data[b]) std::swap(a, b);
+      ds_parent(b) = a;
+      out(e.f.first, data[b].first);
     }
     std::clog << "dual pass: " << clock;
   }
   auto global_min(){
-    return ds_birth(ds_find_set(dy + 1)).first;
+    return data[ds_find_set(dy + 1)].first;
   }
 };
 
@@ -454,7 +412,6 @@ U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   X.fill_data_from_input();
   X.pair_internal();
   X.pair_boundary();
-  // FIXME: the ranks are completely bogus :-( But using link instead of setting parent would likely be more expensive.
   X.sort_edges();
   X.primal(out);
   X.dual(out);

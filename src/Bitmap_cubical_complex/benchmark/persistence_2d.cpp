@@ -32,11 +32,16 @@ int main() {
   char* seed = getenv("MARC_SEED");
   if(seed) gen.seed(atoi(seed));
   //gen.seed(4);
+  char* monotone = getenv("MARC_IOTA");
 
   std::vector<unsigned> sizes {1000, 999};
   //std::vector<unsigned> sizes {4, 3};
   std::vector<double> data(sizes[0] * sizes[1]);
-  std::generate(data.begin(), data.end(), get_random);
+  if (monotone) {
+    std::iota(data.begin(), data.end(), std::size_t(0));
+  } else {
+    std::generate(data.begin(), data.end(), get_random);
+  }
 
   Gudhi::Clock clock;
 #ifndef ONLY_DUAL
