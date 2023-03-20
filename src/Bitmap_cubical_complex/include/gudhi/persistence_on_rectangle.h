@@ -42,8 +42,14 @@ namespace Gudhi {
 // TODO: specify in the name that the values are for top cells
 // TODO: split out into out0 and out1, or pass the dimension to it.
 // TODO: maybe check if it only works for dimensions[i] >= 3
-template <typename T, typename Lt, typename Out>
-T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<T>& input, Lt&&lt_filt, Out&&out){
+template <typename U, typename Lt, typename Out>
+U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Lt&&lt_filt, Out&&out){
+#ifdef DEBUG_TRACES
+  std::clog << "input\n";
+  for(std::size_t i=0;i<input.size();++i) {
+    std::clog << i << '\t' << input[i] << '\n';
+  }
+#endif
   Gudhi::Clock clock;
 
   GUDHI_CHECK(dimensions.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
@@ -52,7 +58,9 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   const std::vector<std::size_t> sizes { dimensions[0] - 1, dimensions[1] - 1 };
   const std::size_t dy = 2 * sizes[0] + 1;
   const std::size_t data_size = dy * (2 * sizes[1] + 1);
+  typedef std::pair<U,std::size_t> T;
   std::unique_ptr<T[]> data(new T[data_size]); // std::make_unique_for_overwrite
+  //std::vector<T> data(data_size, std::pair(std::numeric_limits<U>::infinity(), -1)); // TMP for debugging
 
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
   // Only parent is needed on all nodes, rank and birth are only meaningful on cluster representatives. We could
@@ -85,6 +93,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
     T f;
     std::size_t v1, v2; // v1 < v2
     Edge(T f, std::size_t v1, std::size_t v2) : f(f), v1(v1), v2(v2) {}
+    bool operator<(Edge const& other) const { return f.first < other.f.first; }
   };
   auto dualize_edge = [diag = dy + 1](Edge& e) {
     std::size_t new_v2 = e.v1 + diag;
@@ -96,169 +105,224 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   // TODO: build many local pairs and omit them from the list of edges.
 
   for(std::size_t x = 0; x < sizes[0] + 1; ++x) {
-    data[2 * x] = input[x];
+    data[2 * x] = std::pair(input[x], 2 * x); // FIXME: use index in input instead?
     for(std::size_t y = 0; y < sizes[1]; ++y) {
-      std::size_t ref = 2 * x + dy * 2 * y;
-      std::size_t e = ref + dy;
-      data[ref + 2 * dy] = input[x + (sizes[0] + 1) * (y + 1)];
-      data[e] = std::min(input[x + (sizes[0] + 1) * y], data[ref + 2 * dy], lt_filt);
-      //if (x != 0 && x != sizes[0]) edges.emplace_back(data[e], e - 1, e + 1);
+      std::size_t cub1 = 2 * x + dy * 2 * y;
+      std::size_t e = cub1 + dy;
+      std::size_t cub2 = e + dy;
+      data[cub2] = std::pair(input[x + (sizes[0] + 1) * (y + 1)], cub2);
+      data[e] = std::min(data[cub1], data[cub2]);
     }
-
   }
   std::clog << "fill 1: " << clock; clock.begin();
-  // We try to build some local pairs, so we don't need to sort them. If a vertex/square and an adjacent edge have the same filtration value, we can pair them. For now we only pair things horizontally.
   for(std::size_t y = 1; y < 2 * sizes[1]; ++y) {
-    if ((y & 1) == 0) {
-      std::size_t start_decreasing = 0;
-      std::size_t start_increasing = 0;
-      for(std::size_t x = 0; x < sizes[0]; ++x) {
-        std::size_t ref = dy * y + 2 * x;
-        std::size_t i = ref + 1;
-        // i is an edge, between 2 squares
-        if (lt_filt(data[ref + 2], data[ref])) {
-          data[i] = data[ref + 2];
-          if (x < sizes[0] - 1) {
-            if (start_decreasing != 0) {
-              ds_parent[ref + 2] = start_decreasing;
-            } else {
-              ds_parent[ref + 2] = start_decreasing = ref;
-              if (x != 0) {
-                ds_rank[ref] = 1;
-                ds_birth[ref] = data[ref];
-                ds_parent[ref] = ref;
-                if (start_increasing != 0) {
-                  for (std::size_t j = start_increasing; j <= ref; j += 2) {
-                    ds_parent[j] = ref;
-                  }
-                  start_increasing = 0;
-                }
-              }
-            }
-          } else { // last column
-            edges.emplace_back(data[i], i - dy, i + dy);
-            if (start_decreasing == 0) {
-              ds_birth[ref] = data[ref];
-              ds_parent[ref] = ref;
-            }
-            if (start_increasing != 0) {
-              for (std::size_t j = start_increasing; j < ref; j += 2) {
-                ds_parent[j] = ref;
-              }
-              ds_rank[ref] = 1;
-              start_increasing = 0;
-            }
-          }
-        } else {
-          data[i] = data[ref];
-          if (start_decreasing == 0 && x != 0) { // the left square is available for pairing
-            if (start_increasing == 0) start_increasing = ref;
-            //ds_parent[ref] = ref + 2;
-            //ds_rank[ref] = 1; // not true
-            //if (x < sizes[0] - 1) {
-            //  ds_parent[ref + 2] = ref + 2; // too soon
-            //  ds_birth[ref + 2] = data[ref + 2]; // too soon
-            //}
-          } else {
-            edges.emplace_back(data[i], i - dy, i + dy);
-            if (x < sizes[0] - 1) {
-              //ds_parent[ref + 2] = ref + 2; // too soon ?
-              //ds_birth[ref + 2] = data[ref + 2]; // too soon ?
-            }
-            start_decreasing = 0;
-          }
-        }
-      }
-      if (start_increasing != 0) {
-        for (std::size_t ref = start_increasing; ref < dy * y + 2 * sizes[0]; ref += 2) {
-          ds_parent[ref] = 0;
-        }
-      }
-    } else {
-      std::size_t start_decreasing = 0;
-      std::size_t start_increasing = 0;
-      for(std::size_t x = 0; x < sizes[0]; ++x) {
-        assert(start_decreasing * start_increasing == 0);
-        std::size_t ref = dy * y + 2 * x;
-        std::size_t i = ref + 1;
-        data[i] = std::min(data[ref], data[ref + 2], lt_filt);
-        if (x != 0) {
-          // i is a vertex, between 2 edges
-          if (!lt_filt(data[ref + 2], data[ref])) { // increasing
-            if (start_decreasing == 0) {
-              if (start_increasing != 0) {
-                ds_parent[ref + 1] = start_increasing;
-                //ds_rank[ref] = 1;
-              } else {
-                ds_parent[ref + 1] = start_increasing = ref - 1;
-                //ds_rank[ref] = 1;
-              }
-            }
-            else {
-              ds_parent[i] = i;
-              ds_birth[i] = data[i];
-              ds_rank[i] = 1;
-              start_decreasing = 0;
-            }
-          } else { // decreasing
-            if (x < sizes[0] - 1) {
-              ds_parent[ref + 1] = ref + 3;
-              if (start_decreasing == 0) {
-                start_decreasing = ref + 1;
-                edges.emplace_back(data[ref], ref - 1, ref + 1);
-                start_increasing = 0;
-              }
-            } else {
-              if (start_decreasing == 0)
-                edges.emplace_back(data[ref], ref - 1, ref + 1);
-              ds_parent[i] = i;
-              ds_birth[i] = data[i];
-            }
-          }
-        } else { // take this out of the loop
-          // i is a left-most vertex
-          if (lt_filt(data[ref + 2], data[ref])) { 
-            ds_parent[ref + 1] = ref + 3;
-            start_decreasing = ref + 1;
-          } else {
-            ds_parent[i] = i;
-            ds_birth[i] = data[i];
-          }
-        }
-      }
+    for(std::size_t x = 0; x < sizes[0]; ++x) {
+      std::size_t ref = dy * y + 2 * x;
+      std::size_t i = ref + 1;
+      data[i] = std::min(data[ref], data[ref + 2]);
     }
   }
   std::clog << "fill 2: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
-  std::clog << "ds_data\n";
-  for(std::size_t i=0;i<ds_base.size();++i) {
-    auto&dat=ds_base[i];
-    std::clog << i << '\t' << dat.parent << '\t' << dat.birth << '\n';
-  }
-#endif
-#ifdef DEBUG_TRACES
-  std::clog << "data after init\n";
+  std::clog << "data\n";
   for(std::size_t i = 0; i < data_size; ++i) {
-    std::clog << data[i] << '\t';
+    std::clog << data[i].first << '|' << data[i].second << '\t';
     if ((i+1)%dy == 0)
       std::clog << '\n';
   }
 #endif
 
-  auto lt_edge = [&lt_filt](Edge const& e1, Edge const& e2) { return lt_filt(e1.f, e2.f); };
+  // We don't need the filtration value here, only compare ids.
+  auto id = [&data](std::size_t i){return data[i].second;};
+  // Internal cubes
+  for(std::size_t x = 1; x < sizes[0]; ++x) {
+    for(std::size_t y = 1; y < sizes[1]; ++y) {
+      std::size_t cub = 2 * x + dy * 2 * y;
+      auto ff = data[cub];
+      auto f = ff.second;
+      bool edge_used[4] = { false, false, false, false };
+      bool cub_paired = false;
+      int nv = 0;
+      if (f == id(cub+dy-1)) {
+        ds_parent[cub+dy-1] = cub+dy+1;
+        edge_used[0] = true;
+        ++nv;
+      }
+      if (f == id(cub+dy+1)) {
+        ds_parent[cub+dy+1] = cub-dy+1;
+        edge_used[1] = true;
+        ++nv;
+      }
+      if (f == id(cub-dy+1)) {
+        ds_parent[cub-dy+1] = cub-dy-1;
+        edge_used[2] = true;
+        ++nv;
+      }
+      if (f == id(cub-dy-1)) {
+        if (nv < 3) {
+          ds_parent[cub-dy-1] = cub+dy-1;
+          edge_used[3] = true;
+          ++nv;
+        } else {
+          // the whole neighborhood has value f
+          ds_parent[cub-dy-1] = cub-dy-1;
+          ds_birth[cub-dy-1] = data[cub-dy-1];
+          ds_parent[cub] = cub - 2;
+          continue;
+        }
+      }
+      if (!edge_used[0] && f == id(cub+dy)) {
+        if (!cub_paired) {
+          ds_parent[cub] = cub + 2 * dy;
+          cub_paired = true;
+        } else {
+          edges.emplace_back(ff, cub + dy - 1, cub + dy + 1);
+        }
+      }
+      if (!edge_used[1] && f == id(cub+1)) {
+        if (!cub_paired) {
+          ds_parent[cub] = cub + 2;
+          cub_paired = true;
+        } else {
+          edges.emplace_back(ff, cub - dy + 1, cub + dy + 1);
+        }
+      }
+      if (!edge_used[2] && f == id(cub-dy)) {
+        if (!cub_paired) {
+          ds_parent[cub] = cub - 2 * dy;
+          cub_paired = true;
+        } else {
+          edges.emplace_back(ff, cub - dy - 1, cub - dy + 1);
+        }
+      }
+      if (!edge_used[3] && f == id(cub-1)) {
+        if (!cub_paired) {
+          ds_parent[cub] = cub - 2;
+          cub_paired = true;
+        } else {
+          edges.emplace_back(ff, cub - dy - 1, cub + dy - 1);
+        }
+      }
+      if (!cub_paired) {
+        ds_parent[cub] = cub;
+        ds_birth[cub] = data[cub];
+      }
+    }
+  }
+  // Boundary nodes
+  for(std::size_t x = 1; x < sizes[0]; ++x) {
+    std::size_t cub = 2 * x;
+    auto ff = data[cub];
+    auto f = ff.second;
+    if (f == id(cub+dy-1)) {
+      ds_parent[cub+dy-1] = cub+dy+1;
+      if (f == id(cub+dy+1)) {
+        ds_parent[cub+dy+1] = cub+dy+1;
+        ds_birth[cub+dy+1] = data[cub+dy+1];
+      }
+    } else if (f == id(cub+dy+1)) {
+      ds_parent[cub+dy+1] = cub+dy-1;
+    } else if (f == id(cub+dy)) {
+      edges.emplace_back(ff, cub+dy-1, cub+dy+1);
+    }
+  }
+  for(std::size_t x = 1; x < sizes[0]; ++x) {
+    std::size_t cub = 2 * x + 2 * dy * sizes[1];
+    auto ff = data[cub];
+    auto f = ff.second;
+    if (f == id(cub-dy-1)) {
+      ds_parent[cub-dy-1] = cub-dy+1;
+      if (f == id(cub-dy+1)) {
+        ds_parent[cub-dy+1] = cub-dy+1;
+        ds_birth[cub-dy+1] = data[cub-dy+1];
+      }
+    } else if (f == id(cub-dy+1)) {
+      ds_parent[cub-dy+1] = cub-dy-1;
+    } else if (f == id(cub-dy)) {
+      edges.emplace_back(ff, cub-dy-1, cub-dy+1);
+    }
+  }
+  for(std::size_t y = 1; y < sizes[1]; ++y) {
+    std::size_t cub = 2 * dy * y;
+    auto ff = data[cub];
+    auto f = ff.second;
+    if (f == id(cub+dy+1)) {
+      ds_parent[cub+dy+1] = cub-dy+1;
+      if (f == id(cub-dy+1)) {
+        ds_parent[cub-dy+1] = cub-dy+1;
+        ds_birth[cub-dy+1] = data[cub-dy+1];
+      }
+    } else if (f == id(cub-dy+1)) {
+      ds_parent[cub-dy+1] = cub+dy+1;
+    } else if (f == id(cub+1)) {
+      edges.emplace_back(ff, cub-dy+1, cub+dy+1);
+    }
+  }
+  for(std::size_t y = 1; y < sizes[1]; ++y) {
+    std::size_t cub = 2 * sizes[0] + 2 * dy * y;
+    auto ff = data[cub];
+    auto f = ff.second;
+    if (f == id(cub+dy-1)) {
+      ds_parent[cub+dy-1] = cub-dy-1;
+      if (f == id(cub-dy-1)) {
+        ds_parent[cub-dy-1] = cub-dy-1;
+        ds_birth[cub-dy-1] = data[cub-dy-1];
+      }
+    } else if (f == id(cub-dy-1)) {
+      ds_parent[cub-dy-1] = cub+dy-1;
+    } else if (f == id(cub-1)) {
+      edges.emplace_back(ff, cub-dy-1, cub+dy-1);
+    }
+  }
+  // Corners
+  std::size_t vc = 0;
+  std::size_t vi = dy + 1;
+  if (id(vc) == id(vi)) {
+    ds_parent[vi] = vi;
+    ds_birth[vi] = data[vi];
+  }
+  vc = 2 * sizes[0];
+  vi = vc + dy - 1;
+  if (id(vc) == id(vi)) {
+    ds_parent[vi] = vi;
+    ds_birth[vi] = data[vi];
+  }
+  vc = 2 * dy * sizes[1];
+  vi = vc - dy + 1;
+  if (id(vc) == id(vi)) {
+    ds_parent[vi] = vi;
+    ds_birth[vi] = data[vi];
+  }
+  vc = 2 * sizes[0] + 2 * dy * sizes[1];
+  vi = vc - dy - 1;
+  if (id(vc) == id(vi)) {
+    ds_parent[vi] = vi;
+    ds_birth[vi] = data[vi];
+  }
+  // FIXME: the ranks are completely bogus :-( But using link instead of setting parent would likely be more expensive.
+
 #ifdef GUDHI_USE_TBB
-  tbb::parallel_sort(edges.begin(), edges.end(), lt_edge);
+  tbb::parallel_sort(edges.begin(), edges.end());
 #else
-  std::sort(edges.begin(), edges.end(), lt_edge);
+  std::sort(edges.begin(), edges.end());
 #endif
   std::clog << "sort: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
   std::clog << "edges\n";
-  for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f << '\n'; }
+  for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.f.first << '\t' << e.f.second << '\n'; }
 #endif
 
   // FIXME: is that robust enough? At least make it an argument to the function.
-  ds_birth[0] = std::numeric_limits<T>::infinity();
+  ds_birth[0].first = std::numeric_limits<U>::infinity();
+
+#ifdef DEBUG_TRACES
+  std::clog << "ds_data after pairing\n";
+  for(std::size_t i=0;i<ds_base.size();++i) {
+    auto&dat=ds_base[i];
+    std::clog << i << '\t' << dat.parent << '\t' << dat.birth.first << '\t' << dat.birth.second << '\n';
+  }
+#endif
+
   //T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
   auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
       std::size_t a = ds.find_set(e.v1);
@@ -267,7 +331,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
       std::clog << "processing edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
       if (a == b) return false;
-      if (lt_filt(ds_birth[b], ds_birth[a])) std::swap(a, b);
+      if (ds_birth[b] < ds_birth[a]) std::swap(a, b);
       // ds.link(a, b); std::size_t newrep = ds.find_set(a);
       std::size_t rank_a = ds_rank[a];
       std::size_t& rank_b = ds_rank[b];
@@ -278,7 +342,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
         newrep = b;
         if (rank_a == rank_b) ++rank_b;
       }
-      out(ds_birth[b], e.f);
+      out(ds_birth[b].first, e.f.first);
       ds_birth[newrep] = ds_birth[a];
       return true;
       });
@@ -296,7 +360,7 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
 #endif
     GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
     // We could check here if a or b is 0.
-    if (lt_filt(ds_birth[a], ds_birth[b])) std::swap(a, b);
+    if (ds_birth[a] < ds_birth[b]) std::swap(a, b);
     // ds.link(a, b); std::size_t newrep = ds.find_set(a);
     std::size_t rank_a = ds_rank[a];
     std::size_t& rank_b = ds_rank[b];
@@ -307,13 +371,13 @@ T persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
       newrep = b;
       if (rank_a == rank_b) ++rank_b;
     }
-    out(e.f, ds_birth[b]);
+    out(e.f.first, ds_birth[b].first);
     ds_birth[newrep] = ds_birth[a];
   }
   std::clog << "dual pass: " << clock;
 
   //data[0] = save_data_0;
-  return ds_birth[ds.find_set(dy + 1)];
+  return ds_birth[ds.find_set(dy + 1)].first;
 }
 
 }  // namespace Gudhi

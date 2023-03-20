@@ -29,10 +29,14 @@ double get_random()
 }
 
 int main() {
+  char* seed = getenv("MARC_SEED");
+  if(seed) gen.seed(atoi(seed));
+  //gen.seed(4);
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex_base<double> Base;
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex<Base> Cubical;
 
   std::vector<unsigned> sizes {1000, 999};
+  //std::vector<unsigned> sizes {4, 3};
   std::vector<double> data(sizes[0] * sizes[1]);
   std::generate(data.begin(), data.end(), get_random);
 
