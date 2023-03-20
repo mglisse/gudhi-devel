@@ -32,8 +32,6 @@ int main() {
   char* seed = getenv("MARC_SEED");
   if(seed) gen.seed(atoi(seed));
   //gen.seed(4);
-  typedef Gudhi::cubical_complex::Bitmap_cubical_complex_base<double> Base;
-  typedef Gudhi::cubical_complex::Bitmap_cubical_complex<Base> Cubical;
 
   std::vector<unsigned> sizes {1000, 999};
   //std::vector<unsigned> sizes {4, 3};
@@ -43,6 +41,8 @@ int main() {
   Gudhi::Clock clock;
 #ifndef ONLY_DUAL
   Gudhi::Clock clock_old;
+  typedef Gudhi::cubical_complex::Bitmap_cubical_complex_base<double> Base;
+  typedef Gudhi::cubical_complex::Bitmap_cubical_complex<Base> Cubical;
   Cubical complex_from_top_cells(sizes, data, true);
   std::clog << "Construction from top cells: " << clock;
 

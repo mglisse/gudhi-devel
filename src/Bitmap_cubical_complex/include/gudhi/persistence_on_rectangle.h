@@ -301,6 +301,7 @@ U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::v
   }
   // FIXME: the ranks are completely bogus :-( But using link instead of setting parent would likely be more expensive.
 
+  std::clog << "pairing: " << clock; clock.begin();
 #ifdef GUDHI_USE_TBB
   tbb::parallel_sort(edges.begin(), edges.end());
 #else
