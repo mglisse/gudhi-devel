@@ -69,6 +69,12 @@ struct Persistence_on_rectangle {
   Gudhi::Clock clock;
 
   std::size_t ds_find_set(std::size_t v) {
+    // Experimentally, path halving is currently the fastest. Note that with a
+    // different algorithm, full compression was faster, so make sure to check
+    // again if the algorithm changes.
+    // (the setting is unusual because we start from a forest with broken ranks)
+#if 0
+    // Full compression
     std::size_t old = v;
     std::size_t ancestor = ds_parent(v);
     while (ancestor != v)
@@ -84,6 +90,37 @@ struct Persistence_on_rectangle {
       v = ds_parent(old);
     }
     return ancestor;
+#elif 1
+    // Path halving, best in my experiments
+    std::size_t parent = ds_parent(v);
+    std::size_t grandparent = ds_parent(parent);
+    while (parent != grandparent)
+    {
+      ds_parent(v) = grandparent;
+      v = grandparent;
+      parent = ds_parent(v);
+      grandparent = ds_parent(parent);
+    }
+    return parent;
+#elif 1
+    // Path splitting
+    std::size_t parent = ds_parent(v);
+    std::size_t grandparent = ds_parent(parent);
+    while (parent != grandparent)
+    {
+      ds_parent(v) = grandparent;
+      v = parent;
+      parent = grandparent;
+      grandparent = ds_parent(parent);
+    }
+    return parent;
+#elif 1
+    // No compression (just for reference)
+    std::size_t parent;
+    while (v != (parent = ds_parent(v)))
+      v = parent;
+    return v;
+#endif
   }
 
   void init(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& input_) {
