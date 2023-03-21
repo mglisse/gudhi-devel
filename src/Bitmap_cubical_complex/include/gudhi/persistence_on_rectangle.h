@@ -45,38 +45,41 @@ namespace Gudhi {
 // TODO: make it possible to choose if we want to output a value or an index into input
 template <class Filtration_value>
 struct Persistence_on_rectangle {
+  // TODO: Make it a parameter
+  typedef std::size_t Index;
+
   // If we want to save space, we don't have to store the redundant 'first'
   // field in T. Removing it even speeds up the pairing. However, it slows down
   // filling and the primal/dual passes, resulting in a global slow down (but
   // not horrible).
 
   // std::pair has a bad implementation (constrained by compatibility) in some libraries.
-  // typedef std::pair<Filtration_value,std::size_t> T;
+  // typedef std::pair<Filtration_value,Index> T;
   struct T {
-    Filtration_value first; std::size_t second;
+    Filtration_value first; Index second;
     bool operator<(T const& other) const { return std::tie(first, second) < std::tie(other.first, other.second); }
   };
   std::vector<Filtration_value> const* input_p;
-  std::size_t size_x, size_y, dy, data_size;
+  Index size_x, size_y, dy, data_size;
   std::unique_ptr<T[]> data;
 
   // Information on a cluster
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
   // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
   // We thus use the same representative for disjoint-sets and persistence (the minimum).
-  std::vector<std::size_t> ds_parent_;
-  std::size_t& ds_parent(std::size_t n) { return ds_parent_[n / 2]; }
+  std::vector<Index> ds_parent_;
+  Index& ds_parent(Index n) { return ds_parent_[n / 2]; }
   Gudhi::Clock clock;
 
-  std::size_t ds_find_set(std::size_t v) {
+  Index ds_find_set(Index v) {
     // Experimentally, path halving is currently the fastest. Note that with a
     // different algorithm, full compression was faster, so make sure to check
     // again if the algorithm changes.
     // (the setting is unusual because we start from a forest with broken ranks)
 #if 0
     // Full compression
-    std::size_t old = v;
-    std::size_t ancestor = ds_parent(v);
+    Index old = v;
+    Index ancestor = ds_parent(v);
     while (ancestor != v)
     {
       v = ancestor;
@@ -92,8 +95,8 @@ struct Persistence_on_rectangle {
     return ancestor;
 #elif 1
     // Path halving
-    std::size_t parent = ds_parent(v);
-    std::size_t grandparent = ds_parent(parent);
+    Index parent = ds_parent(v);
+    Index grandparent = ds_parent(parent);
     while (parent != grandparent)
     {
       ds_parent(v) = grandparent;
@@ -104,8 +107,8 @@ struct Persistence_on_rectangle {
     return parent;
 #elif 1
     // Path splitting
-    std::size_t parent = ds_parent(v);
-    std::size_t grandparent = ds_parent(parent);
+    Index parent = ds_parent(v);
+    Index grandparent = ds_parent(parent);
     while (parent != grandparent)
     {
       ds_parent(v) = grandparent;
@@ -116,7 +119,7 @@ struct Persistence_on_rectangle {
     return parent;
 #elif 1
     // No compression (just for reference)
-    std::size_t parent;
+    Index parent;
     while (v != (parent = ds_parent(v)))
       v = parent;
     return v;
@@ -126,7 +129,7 @@ struct Persistence_on_rectangle {
   void init(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& input_) {
 #ifdef DEBUG_TRACES
     std::clog << "Input\n";
-    for(std::size_t i = 0; i < input_.size(); ++i) {
+    for(Index i = 0; i < input_.size(); ++i) {
       std::clog << i << '\t' << input_[i] << '\n';
     }
 #endif
@@ -149,41 +152,41 @@ struct Persistence_on_rectangle {
   }
   struct Edge {
     T f;
-    std::size_t v1, v2; // v1 < v2
-    Edge(T f, std::size_t v1, std::size_t v2) : f(f), v1(v1), v2(v2) {}
+    Index v1, v2; // v1 < v2
+    Edge(T f, Index v1, Index v2) : f(f), v1(v1), v2(v2) {}
     Filtration_value filt() const { return f.first; }
     bool operator<(Edge const& other) const { return filt() < other.filt(); }
   };
   void dualize_edge(Edge& e) const {
-    std::size_t new_v2 = e.v1 + (dy + 1);
+    Index new_v2 = e.v1 + (dy + 1);
     e.v1 = e.v2 - (dy + 1);
     e.v2 = new_v2;
   };
   std::vector<Edge> edges;
 
-  Filtration_value input(std::size_t i) const { return (*input_p)[i]; }
-  void set_data(std::size_t cell, std::size_t i) {
+  Filtration_value input(Index i) const { return (*input_p)[i]; }
+  void set_data(Index cell, Index i) {
     data[cell] = T{ input(i), i };
   }
 
   void fill_data_from_input() {
     // TODO: see if copying input in a separate loop (for-y for-x) has better memory efficiency, or if we can even swap the 2 'for' in this loop (merging with the next loop may be too much).
-    for(std::size_t x = 0; x < size_x + 1; ++x) {
+    for(Index x = 0; x < size_x + 1; ++x) {
       set_data(2 * x, x);
-      for(std::size_t y = 0; y < size_y; ++y) {
-        std::size_t cub1 = 2 * x + dy * 2 * y;
-        std::size_t e = cub1 + dy;
-        std::size_t cub2 = e + dy;
-        std::size_t i = x + (size_x + 1) * (y + 1);
+      for(Index y = 0; y < size_y; ++y) {
+        Index cub1 = 2 * x + dy * 2 * y;
+        Index e = cub1 + dy;
+        Index cub2 = e + dy;
+        Index i = x + (size_x + 1) * (y + 1);
         set_data(cub2, i);
         data[e] = std::min(data[cub1], data[cub2]);
       }
     }
     std::clog << "fill 1: " << clock; clock.begin();
-    for(std::size_t y = 1; y < 2 * size_y; ++y) {
-      for(std::size_t x = 0; x < size_x; ++x) {
-        std::size_t ref = dy * y + 2 * x;
-        std::size_t i = ref + 1;
+    for(Index y = 1; y < 2 * size_y; ++y) {
+      for(Index x = 0; x < size_x; ++x) {
+        Index ref = dy * y + 2 * x;
+        Index i = ref + 1;
         data[i] = std::min(data[ref], data[ref + 2]);
       }
     }
@@ -192,7 +195,7 @@ struct Persistence_on_rectangle {
     std::clog << "fill 2: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
     std::clog << "data\n";
-    for(std::size_t i = 0; i < data_size; ++i) {
+    for(Index i = 0; i < data_size; ++i) {
       std::clog << data[i].first << '|' << data[i].second << '\t';
       if ((i+1)%dy == 0)
         std::clog << '\n';
@@ -200,13 +203,13 @@ struct Persistence_on_rectangle {
 #endif
   }
   // We don't need the filtration value here, only compare ids.
-  auto id(std::size_t i){return data[i].second;};
+  auto id(Index i){return data[i].second;};
   void pair_internal(){
     // Internal cubes
-    for(std::size_t y = 1; y < size_y; ++y) {
-      for(std::size_t x = 1; x < size_x; ++x) {
+    for(Index y = 1; y < size_y; ++y) {
+      for(Index x = 1; x < size_x; ++x) {
         // TODO: see if testing edges first helps
-        std::size_t cub = 2 * x + dy * 2 * y;
+        Index cub = 2 * x + dy * 2 * y;
         auto ff = data[cub];
         auto f = ff.second;
         bool edge_used[4] = { false, false, false, false };
@@ -280,8 +283,8 @@ struct Persistence_on_rectangle {
   }
   void pair_boundary(){
     // Boundary nodes
-    for(std::size_t x = 1; x < size_x; ++x) {
-      std::size_t cub = 2 * x;
+    for(Index x = 1; x < size_x; ++x) {
+      Index cub = 2 * x;
       auto ff = data[cub];
       auto f = ff.second;
       if (f == id(cub+dy-1)) {
@@ -295,8 +298,8 @@ struct Persistence_on_rectangle {
         edges.emplace_back(ff, cub+dy-1, cub+dy+1);
       }
     }
-    for(std::size_t x = 1; x < size_x; ++x) {
-      std::size_t cub = 2 * x + 2 * dy * size_y;
+    for(Index x = 1; x < size_x; ++x) {
+      Index cub = 2 * x + 2 * dy * size_y;
       auto ff = data[cub];
       auto f = ff.second;
       if (f == id(cub-dy-1)) {
@@ -310,8 +313,8 @@ struct Persistence_on_rectangle {
         edges.emplace_back(ff, cub-dy-1, cub-dy+1);
       }
     }
-    for(std::size_t y = 1; y < size_y; ++y) {
-      std::size_t cub = 2 * dy * y;
+    for(Index y = 1; y < size_y; ++y) {
+      Index cub = 2 * dy * y;
       auto ff = data[cub];
       auto f = ff.second;
       if (f == id(cub+dy+1)) {
@@ -325,8 +328,8 @@ struct Persistence_on_rectangle {
         edges.emplace_back(ff, cub-dy+1, cub+dy+1);
       }
     }
-    for(std::size_t y = 1; y < size_y; ++y) {
-      std::size_t cub = 2 * size_x + 2 * dy * y;
+    for(Index y = 1; y < size_y; ++y) {
+      Index cub = 2 * size_x + 2 * dy * y;
       auto ff = data[cub];
       auto f = ff.second;
       if (f == id(cub+dy-1)) {
@@ -341,8 +344,8 @@ struct Persistence_on_rectangle {
       }
     }
     // Corners
-    std::size_t vc = 0;
-    std::size_t vi = dy + 1;
+    Index vc = 0;
+    Index vi = dy + 1;
     if (id(vc) == id(vi)) {
       ds_parent(vi) = vi;
     }
@@ -364,12 +367,12 @@ struct Persistence_on_rectangle {
     std::clog << "pair boundary: " << clock; clock.begin();
 #ifdef DEBUG_TRACES
     std::clog << "ds_parent after pairing\n";
-    for(std::size_t i = 0; i < ds_parent_.size(); ++i) {
+    for(Index i = 0; i < ds_parent_.size(); ++i) {
       std::clog << (2 * i) << '\t' << ds_parent_[i] << '\n';
     }
 #endif
   }
-  bool has_larger_input(std::size_t a, std::size_t b, Filtration_value fb) const {
+  bool has_larger_input(Index a, Index b, Filtration_value fb) const {
     // Is passing fb useful, or would the compiler notice that it already has it available?
     GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
     Filtration_value fa = input(a);
@@ -384,11 +387,11 @@ struct Persistence_on_rectangle {
   // Store critical edges for later processing.
   void fill_and_pair() {
     data[0] = T{std::numeric_limits<Filtration_value>::infinity(), 0};
-    const std::size_t dy_input = size_x + 1;
-    std::size_t cub; // Index of the current square in the full complex
-    std::size_t i;   // Index of the current square in the input
+    const Index dy_input = size_x + 1;
+    Index cub; // Index of the current square in the full complex
+    Index i;   // Index of the current square in the input
     Filtration_value f; // input(i)
-    auto mark_vertex_critical = [&](std::size_t c) {
+    auto mark_vertex_critical = [&](Index c) {
       // Also set data?
       ds_parent(c) = c;
       data[c] = T{f, i};
@@ -397,10 +400,10 @@ struct Persistence_on_rectangle {
       ds_parent(cub) = cub;
       data[cub] = T{f, i};
     };
-    auto mark_edge_critical = [&](std::size_t v1, std::size_t v2) {
+    auto mark_edge_critical = [&](Index v1, Index v2) {
       edges.emplace_back(T{f, i}, v1, v2);
     };
-    auto set_parent = [&](std::size_t child, std::size_t parent) {
+    auto set_parent = [&](Index child, Index parent) {
       GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
       ds_parent(child) = parent;
     };
@@ -415,7 +418,7 @@ struct Persistence_on_rectangle {
     mark_vertex_critical(cub - dy - 1);
 
     // Boundary nodes, 1st row
-    for(std::size_t x = 1; x < size_x; ++x) {
+    for(Index x = 1; x < size_x; ++x) {
       cub = 2 * x;
       i = x;
       f = input(x);
@@ -433,7 +436,7 @@ struct Persistence_on_rectangle {
       }
     }
     // Internal rows
-    for(std::size_t y = 1; y < size_y; ++y) {
+    for(Index y = 1; y < size_y; ++y) {
       // First column
       {
         cub = 2 * dy * y;
@@ -453,7 +456,7 @@ struct Persistence_on_rectangle {
         }
       }
       // Internal cubes
-      for(std::size_t x = 1; x < size_x; ++x) {
+      for(Index x = 1; x < size_x; ++x) {
         cub = 2 * x + 2 * dy * y;
         i = x + dy_input * y;
         f = input(i);
@@ -657,7 +660,7 @@ struct Persistence_on_rectangle {
       }
     }
     // Boundary nodes, last row
-    for(std::size_t x = 1; x < size_x; ++x) {
+    for(Index x = 1; x < size_x; ++x) {
       cub = 2 * x + 2 * dy * size_y;
       i = size_y * dy_input + x;
       f = input(i);
@@ -677,7 +680,7 @@ struct Persistence_on_rectangle {
 
 #ifdef DEBUG_TRACES
     std::clog << "data\n";
-    for(std::size_t i = 0; i < data_size; ++i) {
+    for(Index i = 0; i < data_size; ++i) {
       std::clog << data[i].first << '|' << data[i].second << '\t';
       if ((i+1)%dy == 0)
         std::clog << '\n';
@@ -685,7 +688,7 @@ struct Persistence_on_rectangle {
 #endif
 #ifdef DEBUG_TRACES
     std::clog << "ds_parent after pairing\n";
-    for(std::size_t i = 0; i < ds_parent_.size(); ++i) {
+    for(Index i = 0; i < ds_parent_.size(); ++i) {
       std::clog << (2 * i) << '\t' << ds_parent_[i] << '\n';
     }
 #endif
@@ -707,8 +710,8 @@ struct Persistence_on_rectangle {
   void primal(Out&&out){
     auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
         assert(e.v1 < e.v2);
-        std::size_t a = ds_find_set(e.v1);
-        std::size_t b = ds_find_set(e.v2);
+        Index a = ds_find_set(e.v1);
+        Index b = ds_find_set(e.v2);
 #ifdef DEBUG_TRACES
         std::clog << "processing edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
@@ -728,8 +731,8 @@ struct Persistence_on_rectangle {
       std::clog << "reprocessing edge " << e.v1 << '-' << e.v2 << '\n';
 #endif
       dualize_edge(e);
-      std::size_t a = ds_find_set(e.v1);
-      std::size_t b = ds_find_set(e.v2);
+      Index a = ds_find_set(e.v1);
+      Index b = ds_find_set(e.v2);
 #ifdef DEBUG_TRACES
       std::clog << "i.e. dual edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
