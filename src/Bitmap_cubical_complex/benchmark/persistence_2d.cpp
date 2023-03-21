@@ -35,7 +35,7 @@ int main() {
   char* monotone = getenv("MARC_IOTA");
 
   std::vector<unsigned> sizes {1000, 999};
-  //std::vector<unsigned> sizes {4, 3};
+  //std::vector<unsigned> sizes {5, 5};
   std::vector<double> data(sizes[0] * sizes[1]);
   if (monotone) {
     std::iota(data.begin(), data.end(), std::size_t(0));

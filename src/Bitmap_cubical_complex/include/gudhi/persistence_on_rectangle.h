@@ -126,8 +126,8 @@ struct Persistence_on_rectangle {
   void init(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& input_) {
 #ifdef DEBUG_TRACES
     std::clog << "Input\n";
-    for(std::size_t i = 0; i < input.size(); ++i) {
-      std::clog << i << '\t' << input[i] << '\n';
+    for(std::size_t i = 0; i < input_.size(); ++i) {
+      std::clog << i << '\t' << input_[i] << '\n';
     }
 #endif
     GUDHI_CHECK(dimensions.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
@@ -365,9 +365,326 @@ struct Persistence_on_rectangle {
 #ifdef DEBUG_TRACES
     std::clog << "ds_parent after pairing\n";
     for(std::size_t i = 0; i < ds_parent_.size(); ++i) {
-      std::clog << i << '\t' << ds_parent_[i] << '\n';
+      std::clog << (2 * i) << '\t' << ds_parent_[i] << '\n';
     }
 #endif
+  }
+  bool has_larger_input(std::size_t a, std::size_t b, Filtration_value fb) const {
+    // Is passing fb useful, or would the compiler notice that it already has it available?
+    GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
+    Filtration_value fa = input(a);
+    if (fa > fb) return true;
+    if (fa < fb) return false;
+    return a > b;
+  }
+
+  // TODO: split numbering of vertices / squares (no need for edges), split data and ds_parent
+  // Locally pair simplices around each square.
+  // Work implicitly from input, only store the filtration value of critical vertices and squares.
+  // Store critical edges for later processing.
+  void fill_and_pair() {
+    data[0] = T{std::numeric_limits<Filtration_value>::infinity(), 0};
+    const std::size_t dy_input = size_x + 1;
+    std::size_t cub; // Index of the current square in the full complex
+    std::size_t i;   // Index of the current square in the input
+    Filtration_value f; // input(i)
+    auto mark_vertex_critical = [&](std::size_t c) {
+      // Also set data?
+      ds_parent(c) = c;
+      data[c] = T{f, i};
+    };
+    auto mark_square_critical = [&]() {
+      ds_parent(cub) = cub;
+      data[cub] = T{f, i};
+    };
+    auto mark_edge_critical = [&](std::size_t v1, std::size_t v2) {
+      edges.emplace_back(T{f, i}, v1, v2);
+    };
+    auto set_parent = [&](std::size_t child, std::size_t parent) {
+      GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
+      ds_parent(child) = parent;
+    };
+    // Mark the corners as critical, it will be overwritten if not
+    cub = 0; i = 0; f = input(i);
+    mark_vertex_critical(dy + 1);
+    cub = 2 * size_x; i = size_x; f = input(i);
+    mark_vertex_critical(cub + dy - 1);
+    cub = 2 * dy * size_y; i = dy_input * size_y; f = input(i);
+    mark_vertex_critical(cub - dy + 1);
+    cub = 2 * size_x + 2 * dy * size_y; i = size_x + dy_input * size_y; f = input(i);
+    mark_vertex_critical(cub - dy - 1);
+
+    // Boundary nodes, 1st row
+    for(std::size_t x = 1; x < size_x; ++x) {
+      cub = 2 * x;
+      i = x;
+      f = input(x);
+      if (has_larger_input(i + dy_input, i, f)) {
+        bool ul = has_larger_input(i - 1, i, f) && has_larger_input(i + dy_input - 1, i, f);
+        bool ur = has_larger_input(i + 1, i, f) && has_larger_input(i + dy_input + 1, i, f);
+        if (ul) {
+          set_parent(cub + dy - 1, cub + dy + 1);
+          if (ur) mark_vertex_critical(cub + dy + 1);
+        } else if (ur) {
+          set_parent(cub + dy + 1, cub + dy - 1);
+        } else {
+          mark_edge_critical(cub + dy - 1, cub + dy + 1);
+        }
+      }
+    }
+    // Internal rows
+    for(std::size_t y = 1; y < size_y; ++y) {
+      // First column
+      {
+        cub = 2 * dy * y;
+        i = y * dy_input;
+        f = input(i);
+        if (has_larger_input(i + 1, i, f)) {
+          bool dr = has_larger_input(i - dy_input, i, f) && has_larger_input(i + 1 - dy_input, i, f);
+          bool ur = has_larger_input(i + dy_input, i, f) && has_larger_input(i + 1 + dy_input, i, f);
+          if (dr) {
+            set_parent(cub - dy + 1, cub + dy + 1);
+            if (ur) mark_vertex_critical(cub + dy + 1);
+          } else if (ur) {
+            set_parent(cub + dy + 1, cub - dy + 1);
+          } else {
+            mark_edge_critical(cub - dy + 1, cub + dy + 1);
+          }
+        }
+      }
+      // Internal cubes
+      for(std::size_t x = 1; x < size_x; ++x) {
+        cub = 2 * x + 2 * dy * y;
+        i = x + dy_input * y;
+        f = input(i);
+        // See what part of the boundary shares f
+        bool l = has_larger_input(i - 1, i, f);
+        bool r = has_larger_input(i + 1, i, f);
+        bool d = has_larger_input(i - dy_input, i, f);
+        bool u = has_larger_input(i + dy_input, i, f);
+        bool dl = has_larger_input(i - dy_input - 1, i, f);
+        bool ul = has_larger_input(i + dy_input - 1, i, f);
+        bool dr = has_larger_input(i - dy_input + 1, i, f);
+        bool ur = has_larger_input(i + dy_input + 1, i, f);
+        if (u) { // u
+          if (l) { // u l
+            if (ul) { // u l ul
+              set_parent(cub + dy - 1, cub + dy + 1);
+              if (d) { // U l UL d
+                if (dl) { // U l UL d dl
+                  set_parent(cub - dy - 1, cub + dy - 1);
+                  if (r) { // U L UL d DL r
+                    if (dr) { // U L UL d DL r dr
+                      set_parent(cub - dy + 1, cub - dy - 1);
+                      set_parent(cub, cub + 2);
+                      if (ur) { // U L UL D DL R DR ur - cr
+                        mark_vertex_critical(cub + dy + 1);
+                      }
+                    } else { // U L UL d DL r !dr
+                      set_parent(cub, cub - 2 * dy);
+                      if (ur) { // U L UL D DL r !dr ur - cd
+                        set_parent(cub + dy + 1, cub - dy + 1);
+                      } else { // U L UL D DL r !dr !ur - cd
+                        mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                      }
+                    }
+                  } else { // U L UL d DL !r
+                    set_parent(cub, cub - 2 * dy); // cd
+                  }
+                } else { // U l UL d !dl
+                  set_parent(cub, cub - 2);
+                  if (r) { // U L UL d !dl r - cl
+                    if (dr) { // U L UL d !dl r dr - cl
+                      set_parent(cub - dy + 1, cub - dy - 1);
+                    } else { // U L UL d !dl r !dr - cl
+                      mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                    }
+                    if (ur) { // U L UL D !dl r ur - cl
+                      set_parent(cub + dy + 1, cub - dy + 1);
+                    } else { // U L UL D !dl r !ur - cl
+                      mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                    }
+                  } else { // U L UL d !dl !r - cl
+                    mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                  }
+                }
+              } else { // U l UL !d
+                set_parent(cub, cub - 2);
+                if (r) { // U L UL !d r - cl
+                  if (ur) { // U L UL !d r ur - cl
+                    set_parent(cub + dy + 1, cub - dy + 1);
+                  } else { // U L UL !d r !ur - cl
+                    mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                  }
+                } else {} // U L UL !d !r - cl
+              }
+            } else { // u l !ul
+              set_parent(cub, cub + 2 * dy);
+              if (d) { // U l !ul d - cu
+                if (dl) { // U l !ul d dl - cu
+                  set_parent(cub - dy - 1, cub + dy - 1);
+                } else { // U l !ul d !dl - cu
+                  mark_edge_critical(cub - dy - 1, cub + dy - 1);
+                }
+                if (r) { // U L !ul d r - cu
+                  if (dr) { // U L !ul d r dr - cu
+                    set_parent(cub - dy + 1, cub - dy - 1);
+                  } else { // U L !ul d r !dr - cu
+                    mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                  }
+                  if (ur) { // U L !ul D r ur - cu
+                    set_parent(cub + dy + 1, cub - dy + 1);
+                  } else { // U L !ul D r !ur - cu
+                    mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                  }
+                } else { // U L !ul d !r - cu
+                  mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                }
+              } else { // U l !ul !d - cu
+                mark_edge_critical(cub - dy - 1, cub + dy - 1);
+                if (r) { // U L !ul !d r - cu
+                  if (ur) { // U L !ul !d r ur - cu
+                    set_parent(cub + dy + 1, cub - dy + 1);
+                  } else { // U L !ul !d r !ur - cu
+                    mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                  }
+                } else {} // U L !ul !d !r - cu
+              }
+            }
+          } else { // u !l
+            set_parent(cub, cub + 2 * dy);
+            if (d) { // U !l d - cu
+              if (r) { // U !l d r - cu
+                if (dr) { // U !l d r dr - cu
+                  set_parent(cub - dy + 1, cub - dy - 1);
+                } else { // U !l d r !dr - cu
+                  mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                }
+                if (ur) { // U !l D r ur - cu
+                  set_parent(cub + dy + 1, cub - dy + 1);
+                } else { // U !l D r !ur - cu
+                  mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                }
+              } else { // U !l d !r - cu
+                mark_edge_critical(cub - dy - 1, cub - dy + 1);
+              }
+            } else { // U !l !d - cu
+              if (r) { // U !l !d r - cu
+                if (ur) { // U !l !d r ur - cu
+                  set_parent(cub + dy + 1, cub - dy + 1);
+                } else { // U !l !d r !ur - cu
+                  mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                }
+              } else {} // U !l !d !r - cu
+            }
+          }
+        } else { // !u
+          if (l) { // !u l
+            if (d) { // !u l d
+              if (dl) { // !u l d dl
+                set_parent(cub - dy - 1, cub + dy - 1);
+                if (r) { // !u L d DL r
+                  if (dr) { // !u L d DL r dr
+                    set_parent(cub - dy + 1, cub - dy - 1);
+                  } else { // !u L d DL r !dr
+                    mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                  }
+                  set_parent(cub, cub + 2); // cr
+                } else { // !u L d DL !r
+                  set_parent(cub, cub - 2 * dy); // cd
+                }
+              } else { // !u l d !dl
+                set_parent(cub, cub - 2);
+                if (r) { // !u L d !dl r - cl
+                  if (dr) { // !u L d !dl r dr - cl
+                    set_parent(cub - dy + 1, cub - dy - 1);
+                  } else { // !u L d !dl r !dr - cl
+                    mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                  }
+                  mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                } else { // !u L d !dl !r - cl
+                  mark_edge_critical(cub - dy - 1, cub - dy + 1);
+                }
+              }
+            } else { // !u l !d
+              set_parent(cub, cub - 2);
+              if (r) { // !u L !d r - cl
+                mark_edge_critical(cub - dy + 1, cub + dy + 1);
+              } else {} // !u L !d !r - cl
+            }
+          } else { // !u !l
+            if (d) { // !u !l d
+              set_parent(cub, cub - 2 * dy);
+              if (r) { // !u !l D r - cd
+                if (dr) { // !u !l D r dr - cd
+                  set_parent(cub - dy + 1, cub + dy + 1);
+                } else { // !u !l D r !dr - cd
+                  mark_edge_critical(cub - dy + 1, cub + dy + 1);
+                }
+              } else {} // !u !l D !r - cd
+            } else { // !u !l !d
+              if (r) { // !u !l !d r
+                set_parent(cub, cub + 2); // cr
+              } else { // !u !l !d !r
+                mark_square_critical();
+              }
+            }
+          }
+        }
+      }
+      // Last column
+      {
+        cub = 2 * size_x + 2 * dy * y;
+        i = size_x + dy_input * y;
+        f = input(i);
+        if (has_larger_input(i - 1, i, f)) {
+          bool dl = has_larger_input(i - dy_input, i, f) && has_larger_input(i - 1 - dy_input, i, f);
+          bool ul = has_larger_input(i + dy_input, i, f) && has_larger_input(i - 1 + dy_input, i, f);
+          if (dl) {
+            set_parent(cub - dy - 1, cub + dy - 1);
+            if (ul) mark_vertex_critical(cub + dy - 1);
+          } else if (ul) {
+            set_parent(cub + dy - 1, cub - dy - 1);
+          } else {
+            mark_edge_critical(cub - dy - 1, cub + dy - 1);
+          }
+        }
+      }
+    }
+    // Boundary nodes, last row
+    for(std::size_t x = 1; x < size_x; ++x) {
+      cub = 2 * x + 2 * dy * size_y;
+      i = size_y * dy_input + x;
+      f = input(i);
+      if (has_larger_input(i - dy_input, i, f)) {
+        bool dl = has_larger_input(i - 1, i, f) && has_larger_input(i - dy_input - 1, i, f);
+        bool dr = has_larger_input(i + 1, i, f) && has_larger_input(i - dy_input + 1, i, f);
+        if (dl) {
+          set_parent(cub - dy - 1, cub - dy + 1);
+          if (dr) mark_vertex_critical(cub - dy + 1);
+        } else if (dr) {
+          set_parent(cub - dy + 1, cub - dy - 1);
+        } else {
+          mark_edge_critical(cub - dy - 1, cub - dy + 1);
+        }
+      }
+    }
+
+#ifdef DEBUG_TRACES
+    std::clog << "data\n";
+    for(std::size_t i = 0; i < data_size; ++i) {
+      std::clog << data[i].first << '|' << data[i].second << '\t';
+      if ((i+1)%dy == 0)
+        std::clog << '\n';
+    }
+#endif
+#ifdef DEBUG_TRACES
+    std::clog << "ds_parent after pairing\n";
+    for(std::size_t i = 0; i < ds_parent_.size(); ++i) {
+      std::clog << (2 * i) << '\t' << ds_parent_[i] << '\n';
+    }
+#endif
+    std::clog << "fill and pair: " << clock; clock.begin();
   }
   void sort_edges(){
 #ifdef GUDHI_USE_TBB
@@ -384,6 +701,7 @@ struct Persistence_on_rectangle {
   template<class Out>
   void primal(Out&&out){
     auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
+        assert(e.v1 < e.v2);
         std::size_t a = ds_find_set(e.v1);
         std::size_t b = ds_find_set(e.v2);
 #ifdef DEBUG_TRACES
@@ -428,9 +746,10 @@ template <typename U, typename Out>
 U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out&&out){
   Persistence_on_rectangle<U> X;
   X.init(dimensions, input);
-  X.fill_data_from_input();
-  X.pair_internal();
-  X.pair_boundary();
+  //X.fill_data_from_input();
+  //X.pair_internal();
+  //X.pair_boundary();
+  X.fill_and_pair(); // bogus
   X.sort_edges();
   X.primal(out);
   X.dual(out);
