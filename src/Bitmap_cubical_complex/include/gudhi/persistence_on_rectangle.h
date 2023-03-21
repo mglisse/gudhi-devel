@@ -696,6 +696,9 @@ struct Persistence_on_rectangle {
   }
   void sort_edges(){
 #ifdef GUDHI_USE_TBB
+    // Parallelizing just this part is a joke. It would be possible to
+    // parallelize the pairing (one edge list per thread) and run the dual in
+    // parallel with the primal if we were motivated...
     tbb::parallel_sort(edges.begin(), edges.end());
 #else
     std::sort(edges.begin(), edges.end());
