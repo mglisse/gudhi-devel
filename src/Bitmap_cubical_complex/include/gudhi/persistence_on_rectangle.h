@@ -462,10 +462,11 @@ struct Persistence_on_rectangle {
         bool r = has_larger_input(i + 1, i, f);
         bool d = has_larger_input(i - dy_input, i, f);
         bool u = has_larger_input(i + dy_input, i, f);
-        bool dl = has_larger_input(i - dy_input - 1, i, f);
-        bool ul = has_larger_input(i + dy_input - 1, i, f);
-        bool dr = has_larger_input(i - dy_input + 1, i, f);
-        bool ur = has_larger_input(i + dy_input + 1, i, f);
+        // TODO: achieve the same laziness with lambdas
+#define dl has_larger_input(i - dy_input - 1, i, f)
+#define ul has_larger_input(i + dy_input - 1, i, f)
+#define dr has_larger_input(i - dy_input + 1, i, f)
+#define ur has_larger_input(i + dy_input + 1, i, f)
         if (u) { // u
           if (l) { // u l
             if (ul) { // u l ul
@@ -632,6 +633,10 @@ struct Persistence_on_rectangle {
           }
         }
       }
+#undef dl
+#undef ul
+#undef dr
+#undef ur
       // Last column
       {
         cub = 2 * size_x + 2 * dy * y;
