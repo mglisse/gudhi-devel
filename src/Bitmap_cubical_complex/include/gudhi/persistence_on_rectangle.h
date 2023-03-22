@@ -431,12 +431,12 @@ struct Persistence_on_rectangle {
       i = x;
       f = input(x);
       if (has_larger_input(i + dy_input, i, f)) {
-        bool ul = has_larger_input(i - 1, i, f) && has_larger_input(i + dy_input - 1, i, f);
-        bool ur = has_larger_input(i + 1, i, f) && has_larger_input(i + dy_input + 1, i, f);
-        if (ul) {
+        auto ul = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i + dy_input - 1, i, f); };
+        auto ur = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i + dy_input + 1, i, f); };
+        if (ul()) {
           set_parent(cub + dy - 1, cub + dy + 1);
-          if (ur) mark_vertex_critical(cub + dy + 1);
-        } else if (ur) {
+          if (ur()) mark_vertex_critical(cub + dy + 1);
+        } else if (ur()) {
           set_parent(cub + dy + 1, cub + dy - 1);
         } else {
           mark_edge_critical(cub + dy - 1, cub + dy + 1);
@@ -451,12 +451,12 @@ struct Persistence_on_rectangle {
         i = y * dy_input;
         f = input(i);
         if (has_larger_input(i + 1, i, f)) {
-          bool dr = has_larger_input(i - dy_input, i, f) && has_larger_input(i + 1 - dy_input, i, f);
-          bool ur = has_larger_input(i + dy_input, i, f) && has_larger_input(i + 1 + dy_input, i, f);
-          if (dr) {
+          auto dr = [&](){ return has_larger_input(i - dy_input, i, f) && has_larger_input(i + 1 - dy_input, i, f); };
+          auto ur = [&](){ return has_larger_input(i + dy_input, i, f) && has_larger_input(i + 1 + dy_input, i, f); };
+          if (dr()) {
             set_parent(cub - dy + 1, cub + dy + 1);
-            if (ur) mark_vertex_critical(cub + dy + 1);
-          } else if (ur) {
+            if (ur()) mark_vertex_critical(cub + dy + 1);
+          } else if (ur()) {
             set_parent(cub + dy + 1, cub - dy + 1);
           } else {
             mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -469,32 +469,31 @@ struct Persistence_on_rectangle {
         i = x + dy_input * y;
         f = input(i);
         // See what part of the boundary shares f
-        bool l = has_larger_input(i - 1, i, f);
-        bool r = has_larger_input(i + 1, i, f);
-        bool d = has_larger_input(i - dy_input, i, f);
-        bool u = has_larger_input(i + dy_input, i, f);
-        // TODO: achieve the same laziness with lambdas
-#define dl has_larger_input(i - dy_input - 1, i, f)
-#define ul has_larger_input(i + dy_input - 1, i, f)
-#define dr has_larger_input(i - dy_input + 1, i, f)
-#define ur has_larger_input(i + dy_input + 1, i, f)
-        if (u) { // u
-          if (l) { // u l
-            if (ul) { // u l ul
+        auto l = [&]() { return has_larger_input(i - 1, i, f); };
+        auto r = [&]() { return has_larger_input(i + 1, i, f); };
+        auto d = [&]() { return has_larger_input(i - dy_input, i, f); };
+        auto u = [&]() { return has_larger_input(i + dy_input, i, f); };
+        auto dl = [&]() { return has_larger_input(i - dy_input - 1, i, f); };
+        auto ul = [&]() { return has_larger_input(i + dy_input - 1, i, f); };
+        auto dr = [&]() { return has_larger_input(i - dy_input + 1, i, f); };
+        auto ur = [&]() { return has_larger_input(i + dy_input + 1, i, f); };
+        if (u()) { // u
+          if (l()) { // u l
+            if (ul()) { // u l ul
               set_parent(cub + dy - 1, cub + dy + 1);
-              if (d) { // U l UL d
-                if (dl) { // U l UL d dl
+              if (d()) { // U l UL d
+                if (dl()) { // U l UL d dl
                   set_parent(cub - dy - 1, cub + dy - 1);
-                  if (r) { // U L UL d DL r
-                    if (dr) { // U L UL d DL r dr
+                  if (r()) { // U L UL d DL r
+                    if (dr()) { // U L UL d DL r dr
                       set_parent(cub - dy + 1, cub - dy - 1);
                       set_parent(cub, cub + 2);
-                      if (ur) { // U L UL D DL R DR ur - cr
+                      if (ur()) { // U L UL D DL R DR ur - cr
                         mark_vertex_critical(cub + dy + 1);
                       }
                     } else { // U L UL d DL r !dr
                       set_parent(cub, cub - 2 * dy);
-                      if (ur) { // U L UL D DL r !dr ur - cd
+                      if (ur()) { // U L UL D DL r !dr ur - cd
                         set_parent(cub + dy + 1, cub - dy + 1);
                       } else { // U L UL D DL r !dr !ur - cd
                         mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -505,13 +504,13 @@ struct Persistence_on_rectangle {
                   }
                 } else { // U l UL d !dl
                   set_parent(cub, cub - 2);
-                  if (r) { // U L UL d !dl r - cl
-                    if (dr) { // U L UL d !dl r dr - cl
+                  if (r()) { // U L UL d !dl r - cl
+                    if (dr()) { // U L UL d !dl r dr - cl
                       set_parent(cub - dy + 1, cub - dy - 1);
                     } else { // U L UL d !dl r !dr - cl
                       mark_edge_critical(cub - dy - 1, cub - dy + 1);
                     }
-                    if (ur) { // U L UL D !dl r ur - cl
+                    if (ur()) { // U L UL D !dl r ur - cl
                       set_parent(cub + dy + 1, cub - dy + 1);
                     } else { // U L UL D !dl r !ur - cl
                       mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -522,8 +521,8 @@ struct Persistence_on_rectangle {
                 }
               } else { // U l UL !d
                 set_parent(cub, cub - 2);
-                if (r) { // U L UL !d r - cl
-                  if (ur) { // U L UL !d r ur - cl
+                if (r()) { // U L UL !d r - cl
+                  if (ur()) { // U L UL !d r ur - cl
                     set_parent(cub + dy + 1, cub - dy + 1);
                   } else { // U L UL !d r !ur - cl
                     mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -532,19 +531,19 @@ struct Persistence_on_rectangle {
               }
             } else { // u l !ul
               set_parent(cub, cub + 2 * dy);
-              if (d) { // U l !ul d - cu
-                if (dl) { // U l !ul d dl - cu
+              if (d()) { // U l !ul d - cu
+                if (dl()) { // U l !ul d dl - cu
                   set_parent(cub - dy - 1, cub + dy - 1);
                 } else { // U l !ul d !dl - cu
                   mark_edge_critical(cub - dy - 1, cub + dy - 1);
                 }
-                if (r) { // U L !ul d r - cu
-                  if (dr) { // U L !ul d r dr - cu
+                if (r()) { // U L !ul d r - cu
+                  if (dr()) { // U L !ul d r dr - cu
                     set_parent(cub - dy + 1, cub - dy - 1);
                   } else { // U L !ul d r !dr - cu
                     mark_edge_critical(cub - dy - 1, cub - dy + 1);
                   }
-                  if (ur) { // U L !ul D r ur - cu
+                  if (ur()) { // U L !ul D r ur - cu
                     set_parent(cub + dy + 1, cub - dy + 1);
                   } else { // U L !ul D r !ur - cu
                     mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -554,8 +553,8 @@ struct Persistence_on_rectangle {
                 }
               } else { // U l !ul !d - cu
                 mark_edge_critical(cub - dy - 1, cub + dy - 1);
-                if (r) { // U L !ul !d r - cu
-                  if (ur) { // U L !ul !d r ur - cu
+                if (r()) { // U L !ul !d r - cu
+                  if (ur()) { // U L !ul !d r ur - cu
                     set_parent(cub + dy + 1, cub - dy + 1);
                   } else { // U L !ul !d r !ur - cu
                     mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -565,14 +564,14 @@ struct Persistence_on_rectangle {
             }
           } else { // u !l
             set_parent(cub, cub + 2 * dy);
-            if (d) { // U !l d - cu
-              if (r) { // U !l d r - cu
-                if (dr) { // U !l d r dr - cu
+            if (d()) { // U !l d - cu
+              if (r()) { // U !l d r - cu
+                if (dr()) { // U !l d r dr - cu
                   set_parent(cub - dy + 1, cub - dy - 1);
                 } else { // U !l d r !dr - cu
                   mark_edge_critical(cub - dy - 1, cub - dy + 1);
                 }
-                if (ur) { // U !l D r ur - cu
+                if (ur()) { // U !l D r ur - cu
                   set_parent(cub + dy + 1, cub - dy + 1);
                 } else { // U !l D r !ur - cu
                   mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -581,8 +580,8 @@ struct Persistence_on_rectangle {
                 mark_edge_critical(cub - dy - 1, cub - dy + 1);
               }
             } else { // U !l !d - cu
-              if (r) { // U !l !d r - cu
-                if (ur) { // U !l !d r ur - cu
+              if (r()) { // U !l !d r - cu
+                if (ur()) { // U !l !d r ur - cu
                   set_parent(cub + dy + 1, cub - dy + 1);
                 } else { // U !l !d r !ur - cu
                   mark_edge_critical(cub - dy + 1, cub + dy + 1);
@@ -591,12 +590,12 @@ struct Persistence_on_rectangle {
             }
           }
         } else { // !u
-          if (l) { // !u l
-            if (d) { // !u l d
-              if (dl) { // !u l d dl
+          if (l()) { // !u l
+            if (d()) { // !u l d
+              if (dl()) { // !u l d dl
                 set_parent(cub - dy - 1, cub + dy - 1);
-                if (r) { // !u L d DL r
-                  if (dr) { // !u L d DL r dr
+                if (r()) { // !u L d DL r
+                  if (dr()) { // !u L d DL r dr
                     set_parent(cub - dy + 1, cub - dy - 1);
                   } else { // !u L d DL r !dr
                     mark_edge_critical(cub - dy - 1, cub - dy + 1);
@@ -607,8 +606,8 @@ struct Persistence_on_rectangle {
                 }
               } else { // !u l d !dl
                 set_parent(cub, cub - 2);
-                if (r) { // !u L d !dl r - cl
-                  if (dr) { // !u L d !dl r dr - cl
+                if (r()) { // !u L d !dl r - cl
+                  if (dr()) { // !u L d !dl r dr - cl
                     set_parent(cub - dy + 1, cub - dy - 1);
                   } else { // !u L d !dl r !dr - cl
                     mark_edge_critical(cub - dy - 1, cub - dy + 1);
@@ -620,22 +619,22 @@ struct Persistence_on_rectangle {
               }
             } else { // !u l !d
               set_parent(cub, cub - 2);
-              if (r) { // !u L !d r - cl
+              if (r()) { // !u L !d r - cl
                 mark_edge_critical(cub - dy + 1, cub + dy + 1);
               } else {} // !u L !d !r - cl
             }
           } else { // !u !l
-            if (d) { // !u !l d
+            if (d()) { // !u !l d
               set_parent(cub, cub - 2 * dy);
-              if (r) { // !u !l D r - cd
-                if (dr) { // !u !l D r dr - cd
+              if (r()) { // !u !l D r - cd
+                if (dr()) { // !u !l D r dr - cd
                   set_parent(cub - dy + 1, cub + dy + 1);
                 } else { // !u !l D r !dr - cd
                   mark_edge_critical(cub - dy + 1, cub + dy + 1);
                 }
               } else {} // !u !l D !r - cd
             } else { // !u !l !d
-              if (r) { // !u !l !d r
+              if (r()) { // !u !l !d r
                 set_parent(cub, cub + 2); // cr
               } else { // !u !l !d !r
                 mark_square_critical();
@@ -644,22 +643,18 @@ struct Persistence_on_rectangle {
           }
         }
       }
-#undef dl
-#undef ul
-#undef dr
-#undef ur
       // Last column
       {
         cub = 2 * size_x + 2 * dy * y;
         i = size_x + dy_input * y;
         f = input(i);
         if (has_larger_input(i - 1, i, f)) {
-          bool dl = has_larger_input(i - dy_input, i, f) && has_larger_input(i - 1 - dy_input, i, f);
-          bool ul = has_larger_input(i + dy_input, i, f) && has_larger_input(i - 1 + dy_input, i, f);
-          if (dl) {
+          auto dl = [&](){ return has_larger_input(i - dy_input, i, f) && has_larger_input(i - 1 - dy_input, i, f); };
+          auto ul = [&](){ return has_larger_input(i + dy_input, i, f) && has_larger_input(i - 1 + dy_input, i, f); };
+          if (dl()) {
             set_parent(cub - dy - 1, cub + dy - 1);
-            if (ul) mark_vertex_critical(cub + dy - 1);
-          } else if (ul) {
+            if (ul()) mark_vertex_critical(cub + dy - 1);
+          } else if (ul()) {
             set_parent(cub + dy - 1, cub - dy - 1);
           } else {
             mark_edge_critical(cub - dy - 1, cub + dy - 1);
@@ -673,12 +668,12 @@ struct Persistence_on_rectangle {
       i = size_y * dy_input + x;
       f = input(i);
       if (has_larger_input(i - dy_input, i, f)) {
-        bool dl = has_larger_input(i - 1, i, f) && has_larger_input(i - dy_input - 1, i, f);
-        bool dr = has_larger_input(i + 1, i, f) && has_larger_input(i - dy_input + 1, i, f);
-        if (dl) {
+        auto dl = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i - dy_input - 1, i, f); };
+        auto dr = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i - dy_input + 1, i, f); };
+        if (dl()) {
           set_parent(cub - dy - 1, cub - dy + 1);
-          if (dr) mark_vertex_critical(cub - dy + 1);
-        } else if (dr) {
+          if (dr()) mark_vertex_critical(cub - dy + 1);
+        } else if (dr()) {
           set_parent(cub - dy + 1, cub - dy - 1);
         } else {
           mark_edge_critical(cub - dy - 1, cub - dy + 1);
