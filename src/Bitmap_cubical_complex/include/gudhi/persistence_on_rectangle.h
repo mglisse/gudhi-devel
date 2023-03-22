@@ -174,7 +174,6 @@ struct Persistence_on_rectangle {
     // Everything, and in particular the boundary squares, has cell 0 (representing the infinite exterior cell) as representative by default.
     edges.reserve(input_.size() / 2); // TODO: what is a good estimate here? For a random 1000x1000 input, we get ~311k edges. For a checkerboard, ~498k.
   }
-#if 1
   struct Edge {
     T f;
     Index v1, v2; // v1 < v2
@@ -183,16 +182,6 @@ struct Persistence_on_rectangle {
     Filtration_value filt() const { return f.first; }
     bool operator<(Edge const& other) const { return filt() < other.filt(); }
   };
-#else
-  // Storing only Filtration_value when we don't need the index is possible, it gains a little bit.
-  struct Edge {
-    Filtration_value f;
-    Index v1, v2; // v1 < v2
-    Edge(T f, Index v1, Index v2) : f(f.first), v1(v1), v2(v2) {}
-    Filtration_value filt() const { return f; }
-    bool operator<(Edge const& other) const { return filt() < other.filt(); }
-  };
-#endif
   void dualize_edge(Edge& e) const {
     Index new_v2 = e.v1 + (dy + 1);
     e.v1 = e.v2;
@@ -210,34 +199,31 @@ struct Persistence_on_rectangle {
     if (fa < fb) return false;
     return a > b;
   }
+  void set_parent_vertex(Index child, Index parent) {
+    GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
+    ds_parent_vertex(child) = parent;
+  }
+  void set_parent_square(Index child, Index parent) {
+    GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
+    ds_parent_square(child) = parent;
+  }
 
-  // TODO: split numbering of vertices / squares (no need for edges), split data and ds_parent
   // Locally pair simplices around each square.
   // Work implicitly from input, only store the filtration value of critical vertices and squares.
   // Store critical edges for later processing.
   void fill_and_pair() {
-    Index i;   // Index of the current square in the input
+    Index i; // Index of the current square
     Filtration_value f; // input(i)
     auto mark_vertex_critical = [&](Index c) {
-      // Also set data?
       ds_parent_vertex(c) = c;
-      data_vertex(c) = T{f, i};
+      data_vertex(c) = T(f, i);
     };
     auto mark_square_critical = [&]() {
       ds_parent_square(i) = i;
       data_square(i) = f;
     };
     auto mark_edge_critical = [&](Index v1, Index v2) {
-      edges.emplace_back(T{f, i}, v1, v2);
-    };
-    // TODO: make those 2 real functions if they don't use anything local
-    auto set_parent_vertex = [&](Index child, Index parent) {
-      GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
-      ds_parent_vertex(child) = parent;
-    };
-    auto set_parent_square = [&](Index child, Index parent) {
-      GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
-      ds_parent_square(child) = parent;
+      edges.emplace_back(T(f, i), v1, v2);
     };
     auto  v_ul = [&](){ return i - 1; };
     auto  v_ur = [&](){ return i; };
@@ -247,6 +233,7 @@ struct Persistence_on_rectangle {
     auto pair_square_d = [&](){ set_parent_square(i, i - dy); };
     auto pair_square_l = [&](){ set_parent_square(i, i - 1); };
     auto pair_square_r = [&](){ set_parent_square(i, i + 1); };
+
     // Mark the corners as critical, it will be overwritten if not
     i = 0; f = input(i);
     mark_vertex_critical(v_ur());
@@ -523,6 +510,7 @@ struct Persistence_on_rectangle {
     for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.filt() << '\n'; }
 #endif
   }
+
   template<class Out>
   void primal(Out&&out){
     auto it = std::remove_if(edges.begin(), edges.end(), [&](Edge& e) {
@@ -537,6 +525,7 @@ struct Persistence_on_rectangle {
     });
     edges.erase(it, edges.end());
   }
+
   template<class Out>
   void dual(Out&&out){
     for (auto e : boost::adaptors::reverse(edges)) {
@@ -558,6 +547,7 @@ struct Persistence_on_rectangle {
   }
 };
 
+// TODO: pass dimensions as a pair or array<,2>
 template <typename U, typename Out0, typename Out1>
 auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
 #ifdef GUDHI_DETAILED_TIMES
