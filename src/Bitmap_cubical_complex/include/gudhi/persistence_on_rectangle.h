@@ -43,11 +43,8 @@ namespace Gudhi {
 // TODO: split out into out0 and out1, or pass the dimension to it.
 // TODO: maybe check if it only works for dimensions[i] >= 3
 // TODO: make it possible to choose if we want to output a value or an index into input
-template <class Filtration_value>
+template <class Filtration_value, class Index = std::size_t>
 struct Persistence_on_rectangle {
-  // TODO: Make it a parameter
-  typedef std::size_t Index;
-
   // If we want to save space, we don't have to store the redundant 'first'
   // field in T. Removing it even speeds up the pairing. However, it slows down
   // filling and the primal/dual passes, resulting in a global slow down (but
@@ -150,6 +147,7 @@ struct Persistence_on_rectangle {
     //T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
     std::clog << "init: " << clock; clock.begin();
   }
+#if 1
   struct Edge {
     T f;
     Index v1, v2; // v1 < v2
@@ -157,6 +155,16 @@ struct Persistence_on_rectangle {
     Filtration_value filt() const { return f.first; }
     bool operator<(Edge const& other) const { return filt() < other.filt(); }
   };
+#else
+  // Storing only Filtration_value when we don't need the index is possible, but doesn't save that much (2% ?).
+  struct Edge {
+    Filtration_value f;
+    Index v1, v2; // v1 < v2
+    Edge(T f, Index v1, Index v2) : f(f.first), v1(v1), v2(v2) {}
+    Filtration_value filt() const { return f; }
+    bool operator<(Edge const& other) const { return filt() < other.filt(); }
+  };
+#endif
   void dualize_edge(Edge& e) const {
     Index new_v2 = e.v1 + (dy + 1);
     e.v1 = e.v2 - (dy + 1);
@@ -740,9 +748,9 @@ struct Persistence_on_rectangle {
       std::clog << "i.e. dual edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
 #endif
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
-      // We could check here if a or b is 0, it would be more robust in case the input contains inf.
-      // if (b == 0 || (a != 0 && lt_data()(data[a], data[b]))) std::swap(a, b);
-      if (data[a] < data[b]) std::swap(a, b);
+      // This is more robust in case the input contains inf?
+      if (b == 0 || (a != 0 && data[a] < data[b])) std::swap(a, b);
+      // if (data[a] < data[b]) std::swap(a, b);
       ds_parent(b) = a;
       out(e.filt(), data[b].first);
     }
@@ -755,7 +763,7 @@ struct Persistence_on_rectangle {
 
 template <typename U, typename Out>
 U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out&&out){
-  Persistence_on_rectangle<U> X;
+  Persistence_on_rectangle<U,unsigned> X;
   X.init(dimensions, input);
   //X.fill_data_from_input();
   //X.pair_internal();
