@@ -8,20 +8,26 @@
  *      - YYYY/MM Author: Description of the modification
  */
 
+//  ds_find_set_ is inspired from code in Boost.Graph that is
+//
+//  (C) Copyright Jeremy Siek 2004
+//  Distributed under the Boost Software License, Version 1.0. (See
+//  accompanying file LICENSE_1_0.txt or copy at
+//  http://www.boost.org/LICENSE_1_0.txt)
+
+
 #ifndef PERSISTENCE_ON_RECTANGLE_H
 #define PERSISTENCE_ON_RECTANGLE_H
 
 #include <gudhi/Debug_utils.h>
-#include <gudhi/Clock.h>
+#ifdef GUDHI_DETAILED_TIMES
+ #include <gudhi/Clock.h>
+#endif
 
-#include <boost/pending/disjoint_sets.hpp>
-#include <boost/property_map/property_map.hpp>
-#include <boost/property_map/transform_value_property_map.hpp>
-#include <boost/property_map/function_property_map.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 
 #ifdef GUDHI_USE_TBB
-#include <tbb/parallel_sort.h>
+ #include <tbb/parallel_sort.h>
 #endif
 
 #include <iostream>
@@ -30,7 +36,6 @@
 #include <fstream>
 #include <algorithm>
 #include <iterator>
-#include <limits>
 #include <utility>
 #include <stdexcept>
 #include <cstddef>
@@ -40,28 +45,36 @@
 namespace Gudhi {
 
 // TODO: specify in the name that the values are for top cells
-// TODO: split out into out0 and out1, or pass the dimension to it.
 // TODO: maybe check if it only works for dimensions[i] >= 3
 // TODO: make it possible to choose if we want to output a value or an index into input
-template <class Filtration_value, class Index = std::size_t>
+template <class Filtration_value, class Index = std::size_t, bool output_index = false>
 struct Persistence_on_rectangle {
   // If we want to save space, we don't have to store the redundant 'first'
-  // field in T. Removing it even speeds up the pairing. However, it slows down
-  // filling and the primal/dual passes, resulting in a global slow down (but
-  // not horrible).
-
-  // std::pair has a bad implementation (constrained by compatibility) in some libraries.
-  struct T {
+  // field in T_with_index. However, it would slow down the primal/dual passes.
+  struct T_with_index {
     Filtration_value first; Index second;
-    bool operator<(T const& other) const { return std::tie(first, second) < std::tie(other.first, other.second); }
+    T_with_index() = default;
+    T_with_index(Filtration_value f, Index i) : first(f), second(i) {}
+    bool operator<(T_with_index const& other) const { return std::tie(first, second) < std::tie(other.first, other.second); }
+    Index out() const { return second; }
   };
+  struct T_no_index {
+    Filtration_value first;
+    T_no_index() = default;
+    T_no_index(Filtration_value f, Index) : first(f) {}
+    bool operator<(T_no_index const& other) const { return first < other.first; }
+    Filtration_value out() const { return first; }
+  };
+  typedef std::conditional_t<output_index, T_with_index, T_no_index> T;
   std::vector<Filtration_value> const* input_p;
   // size_* counts the number of vertices in each direction.
   Index size_x, size_y;
   // The square i + dy is right above i.
-  Index data_size, dy;
+  Index dy;
+
   // Squares keep their index from the input.
   // Vertices have the index of the square at their bottom left (smaller x and y)
+  // Store the filtration value of vertices / squares that could be critical.
   std::unique_ptr<T[]> data_v_;
   std::unique_ptr<Filtration_value[]> data_s_;
   T& data_vertex(Index i){ return data_v_[i]; }
@@ -70,17 +83,12 @@ struct Persistence_on_rectangle {
   Filtration_value data_square(Index i) const { return data_s_[i]; }
 
   // Information on a cluster
-  // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
   // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
   // We thus use the same representative for disjoint-sets and persistence (the minimum).
   std::unique_ptr<Index[]> ds_parent_v_;
   std::vector<Index> ds_parent_s_;
   Index& ds_parent_vertex(Index n) { return ds_parent_v_[n]; }
   Index& ds_parent_square(Index n) { return ds_parent_s_[n]; }
-
-#ifdef GUDHI_DETAILED_TIMES
-  Gudhi::Clock clock;
-#endif
 
   template<class Parent>
   Index ds_find_set_(Index v, Parent&&ds_parent) {
@@ -158,22 +166,19 @@ struct Persistence_on_rectangle {
     dy = dimensions[0];
     size_x = dy - 1;
     size_y = dimensions[1] - 1;
-    data_size = (2 * size_x + 1) * (2 * size_y + 1);
-    data_v_.reset(new T[input_.size() - dy - 1]); // Could be std::vector, but the initialization is useless
-    data_s_.reset(new Filtration_value[input_.size()]); // Could be std::vector, but the initialization is useless
+    // The unique_ptr could be std::vector, but the initialization is useless.
+    data_v_.reset(new T[input_.size() - dy - 1]); // 1 row/column less for vertices than squares
+    data_s_.reset(new Filtration_value[input_.size()]);
     ds_parent_v_.reset(new Index[input_.size() - dy - 1]);
     ds_parent_s_.resize(input_.size()); // Initializing the boundary squares to 0 is important
-    // Everything has cell 0 (the infinite exterior cell) as representative by default.
-    // Real vertices/squares should be their own cluster at the beginning.
-    edges.reserve(data_size / 2); // TODO: tighten this number a bit
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "init: " << clock; clock.begin();
-#endif
+    // Everything, and in particular the boundary squares, has cell 0 (representing the infinite exterior cell) as representative by default.
+    edges.reserve(input_.size() / 2); // TODO: what is a good estimate here? For a random 1000x1000 input, we get ~311k edges. For a checkerboard, ~498k.
   }
 #if 1
   struct Edge {
     T f;
     Index v1, v2; // v1 < v2
+    Edge() = default;
     Edge(T f, Index v1, Index v2) : f(f), v1(v1), v2(v2) {}
     Filtration_value filt() const { return f.first; }
     bool operator<(Edge const& other) const { return filt() < other.filt(); }
@@ -211,7 +216,6 @@ struct Persistence_on_rectangle {
   // Work implicitly from input, only store the filtration value of critical vertices and squares.
   // Store critical edges for later processing.
   void fill_and_pair() {
-    //data_square(0) = T{std::numeric_limits<Filtration_value>::infinity(), 0}; // Should be unnecessary now?
     Index i;   // Index of the current square in the input
     Filtration_value f; // input(i)
     auto mark_vertex_critical = [&](Index c) {
@@ -503,10 +507,8 @@ struct Persistence_on_rectangle {
         }
       }
     }
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "fill and pair: " << clock; clock.begin();
-#endif
   }
+
   void sort_edges(){
 #ifdef GUDHI_USE_TBB
     // Parallelizing just this part is a joke. It would be possible to
@@ -516,12 +518,9 @@ struct Persistence_on_rectangle {
 #else
     std::sort(edges.begin(), edges.end());
 #endif
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "sort: " << clock; clock.begin();
-#endif
 #ifdef DEBUG_TRACES
     std::clog << "edges\n";
-    for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.filt() << '\t' << e.f.second << '\n'; }
+    for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.filt() << '\n'; }
 #endif
   }
   template<class Out>
@@ -533,13 +532,10 @@ struct Persistence_on_rectangle {
         if (a == b) return false;
         if (data_vertex(b) < data_vertex(a)) std::swap(a, b);
         ds_parent_vertex(b) = a;
-        out(data_vertex(b).first, e.filt());
+        out(data_vertex(b).out(), e.f.out());
         return true;
     });
     edges.erase(it, edges.end());
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "primal pass: " << clock; clock.begin();
-#endif
   }
   template<class Out>
   void dual(Out&&out){
@@ -548,30 +544,76 @@ struct Persistence_on_rectangle {
       Index a = ds_find_set_square(e.v1);
       Index b = ds_find_set_square(e.v2);
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
-      // This is more robust in case the input contains inf?
+      // This is more robust in case the input contains inf? I used to set the filtration of 0 to inf.
       if (b == 0 || (a != 0 && data_square(a) < data_square(b))) std::swap(a, b);
-      // if (data[a] < data[b]) std::swap(a, b);
       ds_parent_square(b) = a;
-      out(e.filt(), data_square(b));
+      if constexpr (output_index)
+        out(e.f.out(), b);
+      else
+        out(e.f.out(), data_square(b));
     }
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "dual pass: " << clock;
-#endif
   }
   auto global_min(){
-    return data_vertex(ds_find_set_vertex(0)).first;
+    return data_vertex(ds_find_set_vertex(0)).out();
   }
 };
 
-template <typename U, typename Out>
-U persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out&&out){
-  Persistence_on_rectangle<U,unsigned> X;
+template <typename U, typename Out0, typename Out1>
+auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
+#ifdef GUDHI_DETAILED_TIMES
+  Gudhi::Clock clock;
+#endif
+  Persistence_on_rectangle<U, unsigned> X;
   X.init(dimensions, input);
-  X.fill_and_pair(); // bogus
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "init: " << clock; clock.begin();
+#endif
+  X.fill_and_pair();
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "fill and pair: " << clock; clock.begin();
+#endif
   X.sort_edges();
-  X.primal(out);
-  X.dual(out);
-  //data[0] = save_data_0;
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "sort: " << clock; clock.begin();
+#endif
+  X.primal(out0);
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "primal pass: " << clock; clock.begin();
+#endif
+  X.dual(out1);
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "dual pass: " << clock;
+#endif
+  return X.global_min();
+}
+
+// Undocumented, exists to ensure that we do not break the possibility to get indices.
+template <typename U, typename Out0, typename Out1>
+auto persistence_on_rectangle_index(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
+#ifdef GUDHI_DETAILED_TIMES
+  Gudhi::Clock clock;
+#endif
+  Persistence_on_rectangle<U, unsigned, true> X;
+  X.init(dimensions, input);
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "init: " << clock; clock.begin();
+#endif
+  X.fill_and_pair();
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "fill and pair: " << clock; clock.begin();
+#endif
+  X.sort_edges();
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "sort: " << clock; clock.begin();
+#endif
+  X.primal(out0);
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "primal pass: " << clock; clock.begin();
+#endif
+  X.dual(out1);
+#ifdef GUDHI_DETAILED_TIMES
+    std::clog << "dual pass: " << clock;
+#endif
   return X.global_min();
 }
 
