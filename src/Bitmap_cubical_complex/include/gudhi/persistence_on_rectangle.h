@@ -51,27 +51,36 @@ struct Persistence_on_rectangle {
   // not horrible).
 
   // std::pair has a bad implementation (constrained by compatibility) in some libraries.
-  // typedef std::pair<Filtration_value,Index> T;
   struct T {
     Filtration_value first; Index second;
     bool operator<(T const& other) const { return std::tie(first, second) < std::tie(other.first, other.second); }
   };
   std::vector<Filtration_value> const* input_p;
-  Index size_x, size_y, dy, data_size;
-  std::unique_ptr<T[]> data;
-  T& data_vertex(Index i){ return data[i]; }
-  T data_vertex(Index i) const { return data[i]; }
-  T& data_square(Index i){ return data[i]; }
-  T data_square(Index i) const { return data[i]; }
+  // size_* counts the number of vertices in each direction.
+  Index size_x, size_y;
+  // The square i + dy is right above i.
+  Index data_size, dy;
+  // Squares keep their index from the input.
+  // Vertices have the index of the square at their bottom left (smaller x and y)
+  std::unique_ptr<T[]> data_v_;
+  std::unique_ptr<Filtration_value[]> data_s_;
+  T& data_vertex(Index i){ return data_v_[i]; }
+  T data_vertex(Index i) const { return data_v_[i]; }
+  Filtration_value& data_square(Index i){ return data_s_[i]; }
+  Filtration_value data_square(Index i) const { return data_s_[i]; }
 
   // Information on a cluster
   // We only need this for vertices and squares. Since edges and non-edges alternate, we can use n/2 as index.
   // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
   // We thus use the same representative for disjoint-sets and persistence (the minimum).
-  std::vector<Index> ds_parent_;
-  Index& ds_parent_vertex(Index n) { return ds_parent_[n / 2]; }
-  Index& ds_parent_square(Index n) { return ds_parent_[n / 2]; }
+  std::unique_ptr<Index[]> ds_parent_v_;
+  std::vector<Index> ds_parent_s_;
+  Index& ds_parent_vertex(Index n) { return ds_parent_v_[n]; }
+  Index& ds_parent_square(Index n) { return ds_parent_s_[n]; }
+
+#ifdef GUDHI_DETAILED_TIMES
   Gudhi::Clock clock;
+#endif
 
   template<class Parent>
   Index ds_find_set_(Index v, Parent&&ds_parent) {
@@ -146,18 +155,20 @@ struct Persistence_on_rectangle {
     GUDHI_CHECK(dimensions[0] * dimensions[1] == input_.size(),
         std::invalid_argument("Number of cells inconsistent with dimensions"));
     input_p = &input_;
-    size_x = dimensions[0] - 1;
+    dy = dimensions[0];
+    size_x = dy - 1;
     size_y = dimensions[1] - 1;
-    dy = 2 * size_x + 1;
-    data_size = dy * (2 * size_y + 1);
-    data.reset(new T[data_size]); // Could be std::vector, but the initialization is useless
-    ds_parent_.resize((data_size + 1) / 2); // TODO: tighten this number a bit
+    data_size = (2 * size_x + 1) * (2 * size_y + 1);
+    data_v_.reset(new T[input_.size() - dy - 1]); // Could be std::vector, but the initialization is useless
+    data_s_.reset(new Filtration_value[input_.size()]); // Could be std::vector, but the initialization is useless
+    ds_parent_v_.reset(new Index[input_.size() - dy - 1]);
+    ds_parent_s_.resize(input_.size()); // Initializing the boundary squares to 0 is important
     // Everything has cell 0 (the infinite exterior cell) as representative by default.
     // Real vertices/squares should be their own cluster at the beginning.
     edges.reserve(data_size / 2); // TODO: tighten this number a bit
-    // FIXME: is that robust enough? At least make it an argument to the function.
-    //T save_data_0 = data[0]; data[0] = std::numeric_limits<T>::infinity();
+#ifdef GUDHI_DETAILED_TIMES
     std::clog << "init: " << clock; clock.begin();
+#endif
   }
 #if 1
   struct Edge {
@@ -168,7 +179,7 @@ struct Persistence_on_rectangle {
     bool operator<(Edge const& other) const { return filt() < other.filt(); }
   };
 #else
-  // Storing only Filtration_value when we don't need the index is possible, but doesn't save that much (2% ?).
+  // Storing only Filtration_value when we don't need the index is possible, it gains a little bit.
   struct Edge {
     Filtration_value f;
     Index v1, v2; // v1 < v2
@@ -179,7 +190,7 @@ struct Persistence_on_rectangle {
 #endif
   void dualize_edge(Edge& e) const {
     Index new_v2 = e.v1 + (dy + 1);
-    e.v1 = e.v2 - (dy + 1);
+    e.v1 = e.v2;
     e.v2 = new_v2;
   };
   std::vector<Edge> edges;
@@ -200,9 +211,7 @@ struct Persistence_on_rectangle {
   // Work implicitly from input, only store the filtration value of critical vertices and squares.
   // Store critical edges for later processing.
   void fill_and_pair() {
-    data[0] = T{std::numeric_limits<Filtration_value>::infinity(), 0};
-    const Index dy_input = size_x + 1;
-    Index cub; // Index of the current square in the full complex
+    //data_square(0) = T{std::numeric_limits<Filtration_value>::infinity(), 0}; // Should be unnecessary now?
     Index i;   // Index of the current square in the input
     Filtration_value f; // input(i)
     auto mark_vertex_critical = [&](Index c) {
@@ -211,8 +220,8 @@ struct Persistence_on_rectangle {
       data_vertex(c) = T{f, i};
     };
     auto mark_square_critical = [&]() {
-      ds_parent_square(cub) = cub;
-      data_square(cub) = T{f, i};
+      ds_parent_square(i) = i;
+      data_square(i) = f;
     };
     auto mark_edge_critical = [&](Index v1, Index v2) {
       edges.emplace_back(T{f, i}, v1, v2);
@@ -226,32 +235,31 @@ struct Persistence_on_rectangle {
       GUDHI_CHECK(child != parent, std::logic_error("Bug in Gudhi: use mark_*_critical instead of set_parent"));
       ds_parent_square(child) = parent;
     };
-    auto  v_ul = [&](){ return cub + dy - 1; };
-    auto  v_ur = [&](){ return cub + dy + 1; };
-    auto  v_dl = [&](){ return cub - dy - 1; };
-    auto  v_dr = [&](){ return cub - dy + 1; };
-    auto pair_square_u = [&](){ set_parent_square(cub, cub + 2 * dy); };
-    auto pair_square_d = [&](){ set_parent_square(cub, cub - 2 * dy); };
-    auto pair_square_l = [&](){ set_parent_square(cub, cub - 2); };
-    auto pair_square_r = [&](){ set_parent_square(cub, cub + 2); };
+    auto  v_ul = [&](){ return i - 1; };
+    auto  v_ur = [&](){ return i; };
+    auto  v_dl = [&](){ return i - dy - 1; };
+    auto  v_dr = [&](){ return i - dy; };
+    auto pair_square_u = [&](){ set_parent_square(i, i + dy); };
+    auto pair_square_d = [&](){ set_parent_square(i, i - dy); };
+    auto pair_square_l = [&](){ set_parent_square(i, i - 1); };
+    auto pair_square_r = [&](){ set_parent_square(i, i + 1); };
     // Mark the corners as critical, it will be overwritten if not
-    cub = 0; i = 0; f = input(i);
+    i = 0; f = input(i);
     mark_vertex_critical(v_ur());
-    cub = 2 * size_x; i = size_x; f = input(i);
+    i = size_x; f = input(i);
     mark_vertex_critical(v_ul());
-    cub = 2 * dy * size_y; i = dy_input * size_y; f = input(i);
+    i = dy * size_y; f = input(i);
     mark_vertex_critical(v_dr());
-    cub = 2 * size_x + 2 * dy * size_y; i = size_x + dy_input * size_y; f = input(i);
+    i = size_x + dy * size_y; f = input(i);
     mark_vertex_critical(v_dl());
 
     // Boundary nodes, 1st row
     for(Index x = 1; x < size_x; ++x) {
-      cub = 2 * x;
       i = x;
       f = input(x);
-      if (has_larger_input(i + dy_input, i, f)) {
-        auto ul = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i + dy_input - 1, i, f); };
-        auto ur = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i + dy_input + 1, i, f); };
+      if (has_larger_input(i + dy, i, f)) {
+        auto ul = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i + dy - 1, i, f); };
+        auto ur = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i + dy + 1, i, f); };
         if (ul()) {
           set_parent_vertex(v_ul(), v_ur());
           if (ur()) mark_vertex_critical(v_ur());
@@ -266,12 +274,11 @@ struct Persistence_on_rectangle {
     for(Index y = 1; y < size_y; ++y) {
       // First column
       {
-        cub = 2 * dy * y;
-        i = y * dy_input;
+        i = y * dy;
         f = input(i);
         if (has_larger_input(i + 1, i, f)) {
-          auto dr = [&](){ return has_larger_input(i - dy_input, i, f) && has_larger_input(i + 1 - dy_input, i, f); };
-          auto ur = [&](){ return has_larger_input(i + dy_input, i, f) && has_larger_input(i + 1 + dy_input, i, f); };
+          auto dr = [&](){ return has_larger_input(i - dy, i, f) && has_larger_input(i + 1 - dy, i, f); };
+          auto ur = [&](){ return has_larger_input(i + dy, i, f) && has_larger_input(i + 1 + dy, i, f); };
           if (dr()) {
             set_parent_vertex(v_dr(), v_ur());
             if (ur()) mark_vertex_critical(v_ur());
@@ -282,20 +289,19 @@ struct Persistence_on_rectangle {
           }
         }
       }
-      // Internal cubes
+      // Internal squares
       for(Index x = 1; x < size_x; ++x) {
-        cub = 2 * x + 2 * dy * y;
-        i = x + dy_input * y;
+        i = x + dy * y;
         f = input(i);
         // See what part of the boundary shares f
         auto l = [&]() { return has_larger_input(i - 1, i, f); };
         auto r = [&]() { return has_larger_input(i + 1, i, f); };
-        auto d = [&]() { return has_larger_input(i - dy_input, i, f); };
-        auto u = [&]() { return has_larger_input(i + dy_input, i, f); };
-        auto dl = [&]() { return has_larger_input(i - dy_input - 1, i, f); };
-        auto ul = [&]() { return has_larger_input(i + dy_input - 1, i, f); };
-        auto dr = [&]() { return has_larger_input(i - dy_input + 1, i, f); };
-        auto ur = [&]() { return has_larger_input(i + dy_input + 1, i, f); };
+        auto d = [&]() { return has_larger_input(i - dy, i, f); };
+        auto u = [&]() { return has_larger_input(i + dy, i, f); };
+        auto dl = [&]() { return has_larger_input(i - dy - 1, i, f); };
+        auto ul = [&]() { return has_larger_input(i + dy - 1, i, f); };
+        auto dr = [&]() { return has_larger_input(i - dy + 1, i, f); };
+        auto ur = [&]() { return has_larger_input(i + dy + 1, i, f); };
         if (u()) { // u
           if (l()) { // u l
             if (ul()) { // u l ul
@@ -464,12 +470,11 @@ struct Persistence_on_rectangle {
       }
       // Last column
       {
-        cub = 2 * size_x + 2 * dy * y;
-        i = size_x + dy_input * y;
+        i = size_x + dy * y;
         f = input(i);
         if (has_larger_input(i - 1, i, f)) {
-          auto dl = [&](){ return has_larger_input(i - dy_input, i, f) && has_larger_input(i - 1 - dy_input, i, f); };
-          auto ul = [&](){ return has_larger_input(i + dy_input, i, f) && has_larger_input(i - 1 + dy_input, i, f); };
+          auto dl = [&](){ return has_larger_input(i - dy, i, f) && has_larger_input(i - 1 - dy, i, f); };
+          auto ul = [&](){ return has_larger_input(i + dy, i, f) && has_larger_input(i - 1 + dy, i, f); };
           if (dl()) {
             set_parent_vertex(v_dl(), v_ul());
             if (ul()) mark_vertex_critical(v_ul());
@@ -483,12 +488,11 @@ struct Persistence_on_rectangle {
     }
     // Boundary nodes, last row
     for(Index x = 1; x < size_x; ++x) {
-      cub = 2 * x + 2 * dy * size_y;
-      i = size_y * dy_input + x;
+      i = size_y * dy + x;
       f = input(i);
-      if (has_larger_input(i - dy_input, i, f)) {
-        auto dl = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i - dy_input - 1, i, f); };
-        auto dr = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i - dy_input + 1, i, f); };
+      if (has_larger_input(i - dy, i, f)) {
+        auto dl = [&](){ return has_larger_input(i - 1, i, f) && has_larger_input(i - dy - 1, i, f); };
+        auto dr = [&](){ return has_larger_input(i + 1, i, f) && has_larger_input(i - dy + 1, i, f); };
         if (dl()) {
           set_parent_vertex(v_dl(), v_dr());
           if (dr()) mark_vertex_critical(v_dr());
@@ -499,22 +503,9 @@ struct Persistence_on_rectangle {
         }
       }
     }
-
-#ifdef DEBUG_TRACES
-    std::clog << "data\n";
-    for(Index i = 0; i < data_size; ++i) {
-      std::clog << data[i].first << '|' << data[i].second << '\t';
-      if ((i+1)%dy == 0)
-        std::clog << '\n';
-    }
-#endif
-#ifdef DEBUG_TRACES
-    std::clog << "ds_parent after pairing\n";
-    for(Index i = 0; i < ds_parent_.size(); ++i) {
-      std::clog << (2 * i) << '\t' << ds_parent_[i] << '\n';
-    }
-#endif
+#ifdef GUDHI_DETAILED_TIMES
     std::clog << "fill and pair: " << clock; clock.begin();
+#endif
   }
   void sort_edges(){
 #ifdef GUDHI_USE_TBB
@@ -525,7 +516,9 @@ struct Persistence_on_rectangle {
 #else
     std::sort(edges.begin(), edges.end());
 #endif
+#ifdef GUDHI_DETAILED_TIMES
     std::clog << "sort: " << clock; clock.begin();
+#endif
 #ifdef DEBUG_TRACES
     std::clog << "edges\n";
     for(auto&e : edges){ std::clog << e.v1 << '\t' << e.v2 << '\t' << e.filt() << '\t' << e.f.second << '\n'; }
@@ -537,9 +530,6 @@ struct Persistence_on_rectangle {
         assert(e.v1 < e.v2);
         Index a = ds_find_set_vertex(e.v1);
         Index b = ds_find_set_vertex(e.v2);
-#ifdef DEBUG_TRACES
-        std::clog << "processing edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
-#endif
         if (a == b) return false;
         if (data_vertex(b) < data_vertex(a)) std::swap(a, b);
         ds_parent_vertex(b) = a;
@@ -547,31 +537,29 @@ struct Persistence_on_rectangle {
         return true;
     });
     edges.erase(it, edges.end());
+#ifdef GUDHI_DETAILED_TIMES
     std::clog << "primal pass: " << clock; clock.begin();
+#endif
   }
   template<class Out>
   void dual(Out&&out){
     for (auto e : boost::adaptors::reverse(edges)) {
-#ifdef DEBUG_TRACES
-      std::clog << "reprocessing edge " << e.v1 << '-' << e.v2 << '\n';
-#endif
       dualize_edge(e);
       Index a = ds_find_set_square(e.v1);
       Index b = ds_find_set_square(e.v2);
-#ifdef DEBUG_TRACES
-      std::clog << "i.e. dual edge " << e.v1 << '-' << e.v2 << " : " << a << '-' << b << '\n';
-#endif
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
       // This is more robust in case the input contains inf?
       if (b == 0 || (a != 0 && data_square(a) < data_square(b))) std::swap(a, b);
       // if (data[a] < data[b]) std::swap(a, b);
       ds_parent_square(b) = a;
-      out(e.filt(), data_square(b).first);
+      out(e.filt(), data_square(b));
     }
+#ifdef GUDHI_DETAILED_TIMES
     std::clog << "dual pass: " << clock;
+#endif
   }
   auto global_min(){
-    return data_vertex(ds_find_set_vertex(dy + 1)).first;
+    return data_vertex(ds_find_set_vertex(0)).first;
   }
 };
 
