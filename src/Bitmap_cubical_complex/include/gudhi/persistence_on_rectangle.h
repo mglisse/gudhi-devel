@@ -154,6 +154,21 @@ struct Persistence_on_rectangle {
     return ds_find_set_(v, [this](Index i) -> Index& { return ds_parent_square(i); });
   }
 
+  struct Edge {
+    T f;
+    Index v1, v2; // v1 < v2
+    Edge() = default;
+    Edge(T f, Index v1, Index v2) : f(f), v1(v1), v2(v2) {}
+    Filtration_value filt() const { return f.first; }
+    bool operator<(Edge const& other) const { return filt() < other.filt(); }
+  };
+  void dualize_edge(Edge& e) const {
+    Index new_v2 = e.v1 + (dy + 1);
+    e.v1 = e.v2;
+    e.v2 = new_v2;
+  };
+  std::vector<Edge> edges;
+
   void init(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& input_) {
 #ifdef DEBUG_TRACES
     std::clog << "Input\n";
@@ -175,20 +190,6 @@ struct Persistence_on_rectangle {
     // Everything, and in particular the boundary squares, has cell 0 (representing the infinite exterior cell) as representative by default.
     edges.reserve(input_.size() / 2); // TODO: what is a good estimate here? For a random 1000x1000 input, we get ~311k edges. For a checkerboard, ~498k.
   }
-  struct Edge {
-    T f;
-    Index v1, v2; // v1 < v2
-    Edge() = default;
-    Edge(T f, Index v1, Index v2) : f(f), v1(v1), v2(v2) {}
-    Filtration_value filt() const { return f.first; }
-    bool operator<(Edge const& other) const { return filt() < other.filt(); }
-  };
-  void dualize_edge(Edge& e) const {
-    Index new_v2 = e.v1 + (dy + 1);
-    e.v1 = e.v2;
-    e.v2 = new_v2;
-  };
-  std::vector<Edge> edges;
 
   bool has_larger_input(Index a, Index b, Filtration_value fb) const {
     // Is passing fb useful, or would the compiler notice that it already has it available?
