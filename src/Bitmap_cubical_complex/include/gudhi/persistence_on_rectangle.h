@@ -50,7 +50,7 @@ namespace Gudhi {
 template <class Filtration_value, class Index = std::size_t, bool output_index = false>
 struct Persistence_on_rectangle {
   // If we want to save space, we don't have to store the redundant 'first'
-  // field in T_with_index. However, it would slow down the primal/dual passes.
+  // field in T_with_index. However, it would slow down the primal pass.
   struct T_with_index {
     Filtration_value first; Index second;
     T_with_index() = default;
@@ -81,6 +81,8 @@ struct Persistence_on_rectangle {
   std::unique_ptr<T[]> data_v_;
   T& data_vertex(Index i){ return data_v_[i]; }
   T data_vertex(Index i) const { return data_v_[i]; }
+
+  std::conditional_t<output_index, Index, Filtration_value> global_min;
 
   // Information on a cluster
   // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
@@ -520,6 +522,7 @@ struct Persistence_on_rectangle {
         return true;
     });
     edges.erase(it, edges.end());
+    global_min = data_vertex(ds_find_set_vertex(0)).out();
   }
 
   template<class Out>
@@ -537,9 +540,6 @@ struct Persistence_on_rectangle {
       else
         out(e.f.out(), input(b));
     }
-  }
-  auto global_min(){
-    return data_vertex(ds_find_set_vertex(0)).out();
   }
 };
 
@@ -570,7 +570,7 @@ auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std
 #ifdef GUDHI_DETAILED_TIMES
     std::clog << "dual pass: " << clock;
 #endif
-  return X.global_min();
+  return X.global_min;
 }
 
 // Undocumented, exists to ensure that we do not break the possibility to get indices.
@@ -600,7 +600,7 @@ auto persistence_on_rectangle_index(const std::vector<unsigned>& dimensions, con
 #ifdef GUDHI_DETAILED_TIMES
     std::clog << "dual pass: " << clock;
 #endif
-  return X.global_min();
+  return X.global_min;
 }
 
 }  // namespace Gudhi
