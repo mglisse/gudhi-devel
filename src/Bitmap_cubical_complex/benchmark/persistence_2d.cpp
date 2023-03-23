@@ -80,7 +80,7 @@ int main() {
   clock.begin();
   std::vector<std::pair<double, double>> res3;
   auto outi = [&res3, &data](double b, double d) { if (data[b] < data[d]) res3.emplace_back(data[b], data[d]); };
-  std::size_t gm = Gudhi::persistence_on_rectangle_index(sizes, data, outi, outi);
+  std::size_t gm = Gudhi::persistence_on_rectangle<true>(sizes, data, outi, outi);
   res3.emplace_back(data[gm], std::numeric_limits<double>::infinity());
   std::clog << "Total new code with index: " << clock << std::endl;
 

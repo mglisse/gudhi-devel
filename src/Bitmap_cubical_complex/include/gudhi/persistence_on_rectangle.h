@@ -544,12 +544,12 @@ struct Persistence_on_rectangle {
 };
 
 // TODO: pass dimensions as a pair or array<,2>
-template <typename U, typename Out0, typename Out1>
+template <bool output_index = false, typename U, typename Out0, typename Out1>
 auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
 #ifdef GUDHI_DETAILED_TIMES
   Gudhi::Clock clock;
 #endif
-  Persistence_on_rectangle<U, unsigned> X;
+  Persistence_on_rectangle<U, unsigned, output_index> X;
   X.init(dimensions, input);
 #ifdef GUDHI_DETAILED_TIMES
     std::clog << "init: " << clock; clock.begin();
@@ -572,37 +572,6 @@ auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std
 #endif
   return X.global_min;
 }
-
-// Undocumented, exists to ensure that we do not break the possibility to get indices.
-template <typename U, typename Out0, typename Out1>
-auto persistence_on_rectangle_index(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
-#ifdef GUDHI_DETAILED_TIMES
-  Gudhi::Clock clock;
-#endif
-  Persistence_on_rectangle<U, unsigned, true> X;
-  X.init(dimensions, input);
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "init: " << clock; clock.begin();
-#endif
-  X.fill_and_pair();
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "fill and pair: " << clock; clock.begin();
-#endif
-  X.sort_edges();
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "sort: " << clock; clock.begin();
-#endif
-  X.primal(out0);
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "primal pass: " << clock; clock.begin();
-#endif
-  X.dual(out1);
-#ifdef GUDHI_DETAILED_TIMES
-    std::clog << "dual pass: " << clock;
-#endif
-  return X.global_min;
-}
-
 }  // namespace Gudhi
 
 #endif  // PERSISTENCE_ON_RECTANGLE_H
