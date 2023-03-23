@@ -66,21 +66,21 @@ struct Persistence_on_rectangle {
     Filtration_value out() const { return first; }
   };
   typedef std::conditional_t<output_index, T_with_index, T_no_index> T;
+
   std::vector<Filtration_value> const* input_p;
+  Filtration_value input(Index i) const { return (*input_p)[i]; }
+
   // size_* counts the number of vertices in each direction.
   Index size_x, size_y;
   // The square i + dy is right above i.
   Index dy;
 
   // Squares keep their index from the input.
-  // Vertices have the index of the square at their bottom left (smaller x and y)
+  // Vertices have the index as the square at their bottom left (smaller x and y)
   // Store the filtration value of vertices / squares that could be critical.
   std::unique_ptr<T[]> data_v_;
-  std::unique_ptr<Filtration_value[]> data_s_;
   T& data_vertex(Index i){ return data_v_[i]; }
   T data_vertex(Index i) const { return data_v_[i]; }
-  Filtration_value& data_square(Index i){ return data_s_[i]; }
-  Filtration_value data_square(Index i) const { return data_s_[i]; }
 
   // Information on a cluster
   // We do not use the rank/size heuristics, they do not go well with the pre-pairing and end up slowing things down.
@@ -168,7 +168,6 @@ struct Persistence_on_rectangle {
     size_y = dimensions[1] - 1;
     // The unique_ptr could be std::vector, but the initialization is useless.
     data_v_.reset(new T[input_.size() - dy - 1]); // 1 row/column less for vertices than squares
-    data_s_.reset(new Filtration_value[input_.size()]);
     ds_parent_v_.reset(new Index[input_.size() - dy - 1]);
     ds_parent_s_.resize(input_.size()); // Initializing the boundary squares to 0 is important
     // Everything, and in particular the boundary squares, has cell 0 (representing the infinite exterior cell) as representative by default.
@@ -188,8 +187,6 @@ struct Persistence_on_rectangle {
     e.v2 = new_v2;
   };
   std::vector<Edge> edges;
-
-  Filtration_value input(Index i) const { return (*input_p)[i]; }
 
   bool has_larger_input(Index a, Index b, Filtration_value fb) const {
     // Is passing fb useful, or would the compiler notice that it already has it available?
@@ -220,7 +217,6 @@ struct Persistence_on_rectangle {
     };
     auto mark_square_critical = [&]() {
       ds_parent_square(i) = i;
-      data_square(i) = f;
     };
     auto mark_edge_critical = [&](Index v1, Index v2) {
       edges.emplace_back(T(f, i), v1, v2);
@@ -534,12 +530,12 @@ struct Persistence_on_rectangle {
       Index b = ds_find_set_square(e.v2);
       GUDHI_CHECK(a != b, std::logic_error("Bug in Gudhi"));
       // This is more robust in case the input contains inf? I used to set the filtration of 0 to inf.
-      if (b == 0 || (a != 0 && data_square(a) < data_square(b))) std::swap(a, b);
+      if (b == 0 || (a != 0 && input(a) < input(b))) std::swap(a, b);
       ds_parent_square(b) = a;
       if constexpr (output_index)
         out(e.f.out(), b);
       else
-        out(e.f.out(), data_square(b));
+        out(e.f.out(), input(b));
     }
   }
   auto global_min(){
