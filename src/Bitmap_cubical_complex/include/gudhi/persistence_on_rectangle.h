@@ -67,11 +67,11 @@ struct Persistence_on_rectangle {
   };
   typedef std::conditional_t<output_index, T_with_index, T_no_index> T;
 
-  std::vector<Filtration_value> const* input_p;
-  Filtration_value input(Index i) const { return (*input_p)[i]; }
+  Filtration_value const* input_p;
+  Filtration_value input(Index i) const { return input_p[i]; }
 
   // size_* counts the number of vertices in each direction.
-  Index size_x, size_y;
+  Index size_x, size_y, input_size;
   // The square i + dy is right above i.
   Index dy;
 
@@ -169,26 +169,24 @@ struct Persistence_on_rectangle {
   };
   std::vector<Edge> edges;
 
-  void init(const std::vector<unsigned>& dimensions, const std::vector<Filtration_value>& input_) {
+  void init(const Filtration_value* input_, Index n_rows, Index n_cols) {
+    input_size = n_rows * n_cols;
+    input_p = input_;
 #ifdef DEBUG_TRACES
     std::clog << "Input\n";
-    for(Index i = 0; i < input_.size(); ++i) {
-      std::clog << i << '\t' << input_[i] << '\n';
+    for(Index i = 0; i < input_size; ++i) {
+      std::clog << i << '\t' << input(i) << '\n';
     }
 #endif
-    GUDHI_CHECK(dimensions.size() == 2, std::logic_error("persistence_2d_dual() only works on 2-dimensional complexes"));
-    GUDHI_CHECK(dimensions[0] * dimensions[1] == input_.size(),
-        std::invalid_argument("Number of cells inconsistent with dimensions"));
-    input_p = &input_;
-    dy = dimensions[0];
+    dy = n_cols;
     size_x = dy - 1;
-    size_y = dimensions[1] - 1;
+    size_y = n_rows - 1;
     // The unique_ptr could be std::vector, but the initialization is useless.
-    data_v_.reset(new T[input_.size() - dy - 1]); // 1 row/column less for vertices than squares
-    ds_parent_v_.reset(new Index[input_.size() - dy - 1]);
-    ds_parent_s_.resize(input_.size()); // Initializing the boundary squares to 0 is important
+    data_v_.reset(new T[input_size - dy - 1]); // 1 row/column less for vertices than squares
+    ds_parent_v_.reset(new Index[input_size - dy - 1]);
+    ds_parent_s_.resize(input_size); // Initializing the boundary squares to 0 is important
     // Everything, and in particular the boundary squares, has cell 0 (representing the infinite exterior cell) as representative by default.
-    edges.reserve(input_.size() / 2); // TODO: what is a good estimate here? For a random 1000x1000 input, we get ~311k edges. For a checkerboard, ~498k.
+    edges.reserve(input_size / 2); // TODO: what is a good estimate here? For a random 1000x1000 input, we get ~311k edges. For a checkerboard, ~498k.
   }
 
   bool has_larger_input(Index a, Index b, Filtration_value fb) const {
@@ -547,11 +545,14 @@ struct Persistence_on_rectangle {
 // TODO: pass dimensions as a pair or array<,2>
 template <bool output_index = false, typename U, typename Out0, typename Out1>
 auto persistence_on_rectangle(const std::vector<unsigned>& dimensions, const std::vector<U>& input, Out0&&out0, Out1&&out1){
+  GUDHI_CHECK(dimensions.size() == 2, std::logic_error("persistence_on_rectangle() only works on 2-dimensional complexes"));
+  GUDHI_CHECK(dimensions[0] * dimensions[1] == input.size(),
+      std::invalid_argument("Number of cells inconsistent with dimensions"));
 #ifdef GUDHI_DETAILED_TIMES
   Gudhi::Clock clock;
 #endif
   Persistence_on_rectangle<U, unsigned, output_index> X;
-  X.init(dimensions, input);
+  X.init(input.data(), dimensions[1], dimensions[0]);
 #ifdef GUDHI_DETAILED_TIMES
     std::clog << "init: " << clock; clock.begin();
 #endif
