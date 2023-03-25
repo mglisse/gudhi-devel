@@ -73,14 +73,14 @@ int main() {
   clock.begin();
   std::vector<std::pair<double, double>> res2; res2.reserve(data.size() / 2);
   auto out = [&res2](double b, double d) { if (b < d) res2.emplace_back(b, d); };
-  double global_min = Gudhi::persistence_on_rectangle(sizes, data, out, out);
+  double global_min = Gudhi::persistence_on_rectangle_from_top_cells(data.data(), sizes[1], sizes[0], out, out);
   res2.emplace_back(global_min, std::numeric_limits<double>::infinity());
   std::clog << "Total new code: " << clock << std::endl;
 
   clock.begin();
   std::vector<std::pair<double, double>> res3; res3.reserve(data.size() / 2);
   auto outi = [&res3, &data](double b, double d) { if (data[b] < data[d]) res3.emplace_back(data[b], data[d]); };
-  std::size_t gm = Gudhi::persistence_on_rectangle<true>(sizes, data, outi, outi);
+  std::size_t gm = Gudhi::persistence_on_rectangle_from_top_cells<true>(data.data(), sizes[1], sizes[0], outi, outi);
   res3.emplace_back(data[gm], std::numeric_limits<double>::infinity());
   std::clog << "Total new code with index: " << clock << std::endl;
 
