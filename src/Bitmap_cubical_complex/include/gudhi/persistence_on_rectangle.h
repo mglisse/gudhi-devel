@@ -39,7 +39,7 @@
 #include <stdexcept>
 #include <cstddef>
 
-namespace Gudhi {
+namespace Gudhi::cubical_complex {
 
 // When building a cubical complex from top-dimensional cells, there are
 // normally more vertices than input top cells ((x+1)*(y+1) instead of x*y).
@@ -542,6 +542,10 @@ struct Persistence_on_rectangle {
     }
   }
 };
+// Ideas for improvement:
+// * for large hard (many intervals) inputs, primal/dual dominate the running time because of the random reads in find_set and input(a/b). The input load would be cheaper if we stored it with parents, but then find_set would be slower.
+// * to increase memory locality, maybe pairing, which is currently arbitrary, could use some heuristic to favor some pairs over others.
+// * try to loosen tight dependency chains, load values several instructions before they are needed. Performing 2 find_set in lock step surprisingly doesn't help.
 
 /**
  * @private
@@ -586,6 +590,6 @@ auto persistence_on_rectangle_from_top_cells(Filtration_value const* input, Inde
 #endif
   return X.global_min;
 }
-}  // namespace Gudhi
+}  // namespace Gudhi::cubical_complex
 
 #endif  // PERSISTENCE_ON_RECTANGLE_H
