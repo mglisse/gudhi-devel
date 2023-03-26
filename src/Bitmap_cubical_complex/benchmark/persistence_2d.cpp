@@ -15,36 +15,27 @@
 
 #include <vector>
 #include <cstdlib>
-#include <cmath>
 #include <random>
 #include <algorithm>
+#include <functional>
 
-std::random_device rd;
-std::mt19937 gen(rd());
-
-double get_random()
-{
-    std::uniform_real_distribution<double> dist(0., 1.);
-    return dist(gen);
-}
+// Set to true to test on a simple example with no finite interval.
+const bool monotone = false;
 
 int main() {
-  char* seed = getenv("MARC_SEED");
-  if(seed) gen.seed(atoi(seed));
-  //gen.seed(4);
-  char* monotone = getenv("MARC_IOTA");
-
   std::vector<unsigned> sizes {1000, 999};
-  //std::vector<unsigned> sizes {5, 5};
   std::vector<double> data(sizes[0] * sizes[1]);
   if (monotone) {
     std::iota(data.begin(), data.end(), std::size_t(0));
   } else {
-    std::generate(data.begin(), data.end(), get_random);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dist(0., 1.);
+    std::generate(data.begin(), data.end(), std::bind(dist, gen));
   }
 
   Gudhi::Clock clock;
-#ifndef ONLY_DUAL
+#ifndef ONLY_2D
   Gudhi::Clock clock_old;
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex_base<double> Base;
   typedef Gudhi::cubical_complex::Bitmap_cubical_complex<Base> Cubical;
@@ -66,9 +57,7 @@ int main() {
     res1.emplace_back(complex_from_top_cells.filtration(std::get<0>(p)), complex_from_top_cells.filtration(std::get<1>(p)));
   }
   std::clog << "Total old code: " << clock_old;
-  std::sort(res1.begin(), res1.end());
 #endif
-
 
   clock.begin();
   std::vector<std::pair<double, double>> res2; res2.reserve(data.size() / 2);
@@ -84,7 +73,8 @@ int main() {
   res3.emplace_back(data[gm], std::numeric_limits<double>::infinity());
   std::clog << "Total new code with index: " << clock << std::endl;
 
-#ifndef ONLY_DUAL
+#ifndef ONLY_2D
+  std::sort(res1.begin(), res1.end());
   std::sort(res2.begin(), res2.end());
   std::sort(res3.begin(), res3.end());
   if(res1 != res2) {
