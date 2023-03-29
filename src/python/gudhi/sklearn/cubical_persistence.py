@@ -8,7 +8,7 @@
 #   - YYYY/MM Author: Description of the modification
 
 from .. import CubicalComplex
-from .._pers_cub_lowdim import persistence_on_a_line
+from .._pers_cub_lowdim import _persistence_on_a_line
 from sklearn.base import BaseEstimator, TransformerMixin
 
 import numpy as np
@@ -75,9 +75,9 @@ class CubicalPersistence(BaseEstimator, TransformerMixin):
     def __transform(self, cells):
         cells = np.asarray(cells)
         if len(cells.shape) == 1 and self.min_persistence >= 0:
-            res = persistence_on_a_line(cells)
+            res = _persistence_on_a_line(cells)
             if self.min_persistence > 0:
-                # It would be more efficient inside persistence_on_a_line, but not worth it?
+                # It would be more efficient inside _persistence_on_a_line, but not worth it?
                 res = res[res[:, 1] - res[:, 0] > self.min_persistence]
             # Wasteful if dim_list_ does not contain 0, but that seems unlikely.
             return [res if i == 0 else np.empty((0,2)) for i in self.dim_list_]
