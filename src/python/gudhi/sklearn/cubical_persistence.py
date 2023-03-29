@@ -88,9 +88,9 @@ class CubicalPersistence(BaseEstimator, TransformerMixin):
             elif cells.shape[0] == 1 or cells.shape[1] == 1:
                 diags = [_persistence_on_a_line(cells.reshape(-1)), np.empty((0,2))]
             elif cells.shape[0] == 2:
-                diags = [_persistence_on_a_line(a.min(0)), np.empty((0,2))]
+                diags = [_persistence_on_a_line(cells.min(0)), np.empty((0,2))]
             elif cells.shape[1] == 2:
-                diags = [_persistence_on_a_line(a.min(1)), np.empty((0,2))]
+                diags = [_persistence_on_a_line(cells.min(1)), np.empty((0,2))]
             else:
                 diags = _persistence_on_rectangle_from_top_cells(cells, self.min_persistence)
             return [diags[i] if i in (0, 1) else np.empty((0,2)) for i in self.dim_list_]
