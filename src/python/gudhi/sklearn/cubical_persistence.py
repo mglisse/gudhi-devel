@@ -8,7 +8,7 @@
 #   - YYYY/MM Author: Description of the modification
 
 from .. import CubicalComplex
-from .._persline import persistence_on_a_line
+from .._pers_cub_lowdim import persistence_on_a_line
 from sklearn.base import BaseEstimator, TransformerMixin
 
 import numpy as np
