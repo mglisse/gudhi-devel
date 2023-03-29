@@ -11,6 +11,7 @@
 #include <vector>
 #include <array>
 #include <limits>
+#include <stdexcept>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -22,6 +23,7 @@
 
 #include <gudhi/Persistence_on_a_line.h>
 #include <gudhi/persistence_on_rectangle.h>
+#include <gudhi/Debug_utils.h>
 
 namespace py = pybind11;
 typedef std::vector<std::array< float, 2>> Vf;
@@ -51,7 +53,9 @@ py::list fun2(py::array_t<double, py::array::c_style | py::array::forcecast> dat
   py::buffer_info buf = data.request();
   if(buf.ndim!=2)
     throw std::runtime_error("Data must be a 2-dimensional array");
-  // FIXME: handle case where shape[i]<2
+  // If we make this function public, it should probably be enhanced to handle these cases.
+  if(buf.shape[0] < 2 || buf.shape[1] < 2)
+    throw std::runtime_error("The Python caller is supposed to ensure that shape[i]>=2");
   std::vector<std::array<double, 2>> dgm0, dgm1;
   {
     py::gil_scoped_release release;
