@@ -11,7 +11,7 @@
 #include <gudhi/Clock.h>
 #include <gudhi/Bitmap_cubical_complex.h>
 #include <gudhi/Persistent_cohomology.h>
-#include <gudhi/persistence_on_rectangle.h>
+#include <gudhi/Persistence_on_rectangle.h>
 
 #include <vector>
 #include <cstdlib>

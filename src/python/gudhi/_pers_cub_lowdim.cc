@@ -22,7 +22,7 @@
 #include <boost/range/adaptor/transformed.hpp>
 
 #include <gudhi/Persistence_on_a_line.h>
-#include <gudhi/persistence_on_rectangle.h>
+#include <gudhi/Persistence_on_rectangle.h>
 #include <gudhi/Debug_utils.h>
 
 namespace py = pybind11;
