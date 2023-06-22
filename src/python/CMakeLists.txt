@@ -253,12 +253,6 @@ if(PYTHONINTERP_FOUND)
       endif(MPFR_FOUND)
     endif(CGAL_FOUND)
 
-    # Specific for Mac
-    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        set(GUDHI_PYTHON_EXTRA_COMPILE_ARGS "${GUDHI_PYTHON_EXTRA_COMPILE_ARGS}'-mmacosx-version-min=10.14', ")
-        set(GUDHI_PYTHON_EXTRA_LINK_ARGS "${GUDHI_PYTHON_EXTRA_LINK_ARGS}'-mmacosx-version-min=10.14', ")
-    endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-
     # Strip dynamic libraries in release mode for smaller pip packages under linux
     if(CMAKE_COMPILER_IS_GNUCXX)
       if(CMAKE_BUILD_TYPE MATCHES Release)
