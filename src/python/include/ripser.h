@@ -59,6 +59,11 @@
 #include <boost/unordered_map.hpp>
 #endif
 
+template <class T, class V, class C>
+struct heap : std::priority_queue<T, V, C> {
+  void clear() { this->c.clear(); }
+};
+
 template<class index_t_>
 class union_find {
   public:
@@ -98,6 +103,11 @@ bool is_prime(const coefficient_t n) {
   for (coefficient_t p = 3; p * p <= n; p += 2)
     if (!(n % p)) return false;
   return true;
+}
+
+template<class coefficient_t>
+coefficient_t normalize(const coefficient_t n, const coefficient_t modulus) {
+  return n > modulus / 2 ? n - modulus : n;
 }
 
 template<class coefficient_t>
@@ -358,6 +368,13 @@ struct Ripser_all {
     bool operator()(const Entry& a, const Entry& b) const {
       return (get_diameter(a) > get_diameter(b)) ||
         ((get_diameter(a) == get_diameter(b)) && (get_index(a) < get_index(b)));
+    }
+  };
+
+  template <typename Entry> struct smaller_diameter_or_greater_index {
+    bool operator()(const Entry& a, const Entry& b) const {
+      return (get_diameter(a) < get_diameter(b)) ||
+        ((get_diameter(a) == get_diameter(b)) && (get_index(a) > get_index(b)));
     }
   };
 
@@ -866,6 +883,9 @@ continue_outer:;
 #endif
 
       compressed_sparse_matrix<diameter_entry_t> reduction_matrix;
+      heap<diameter_entry_t, std::vector<diameter_entry_t>,
+        greater_diameter_or_smaller_index<diameter_entry_t>>
+          working_reduction_column, working_coboundary;
 
 #ifdef INDICATE_PROGRESS
       std::chrono::steady_clock::time_point next = std::chrono::steady_clock::now() + time_step;
@@ -878,9 +898,7 @@ continue_outer:;
 
         reduction_matrix.append_column();
 
-        std::priority_queue<diameter_entry_t, std::vector<diameter_entry_t>,
-          greater_diameter_or_smaller_index<diameter_entry_t>>
-            working_reduction_column, working_coboundary;
+        working_reduction_column.clear(); working_coboundary.clear();
 
         diameter_entry_t e, pivot = init_coboundary_and_get_pivot(
             column_to_reduce, working_coboundary, dim, pivot_column_index);
