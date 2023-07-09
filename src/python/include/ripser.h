@@ -473,13 +473,12 @@ struct Ripser_all {
       return diam;
     }
 
-    template<class, class=void> class Simplex_coboundary_enumerator;
-    template <class D> class Simplex_coboundary_enumerator<compressed_lower_distance_matrix,D> {
+    template<class DistanceMatrix2, class=void> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
       index_t idx_below, idx_above, j, k;
       std::vector<index_t> vertices;
       diameter_entry_t simplex;
       const coefficient_t modulus;
-      const compressed_lower_distance_matrix& dist;
+      const DistanceMatrix2& dist;
       const binomial_coeff_table& binomial_coeff;
       const ripser& parent;
 
@@ -952,7 +951,7 @@ continue_outer:;
     }
 
     std::vector<diameter_index_t> get_edges() {
-      if constexpr (std::is_same_v<DistanceMatrix, compressed_lower_distance_matrix>) {
+      if constexpr (!std::is_same_v<DistanceMatrix, sparse_distance_matrix>) { // compressed_lower_distance_matrix
         std::vector<diameter_index_t> edges;
         std::vector<index_t> vertices(2);
         for (index_t index = binomial_coeff(n, 2); index-- > 0;) {
