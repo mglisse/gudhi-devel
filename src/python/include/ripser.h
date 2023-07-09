@@ -59,6 +59,111 @@
 #include <boost/unordered_map.hpp>
 #endif
 
+template<class index_t_>
+class union_find {
+  public:
+    typedef index_t_ index_t;
+  private:
+    std::vector<index_t> parent;
+    std::vector<uint8_t> rank;
+  public:
+    union_find(const index_t n) : parent(n), rank(n, 0) {
+      for (index_t i = 0; i < n; ++i) parent[i] = i;
+    }
+
+    index_t find(index_t x) {
+      index_t y = x, z;
+      while ((z = parent[y]) != y) y = z;
+      while ((z = parent[x]) != y) {
+        parent[x] = y;
+        x = z;
+      }
+      return z;
+    }
+
+    void link(index_t x, index_t y) {
+      if ((x = find(x)) == (y = find(y))) return;
+      if (rank[x] > rank[y])
+        parent[y] = x;
+      else {
+        parent[x] = y;
+        if (rank[x] == rank[y]) ++rank[y];
+      }
+    }
+};
+
+template<class coefficient_t>
+bool is_prime(const coefficient_t n) {
+  if (!(n & 1) || n < 2) return n == 2;
+  for (coefficient_t p = 3; p * p <= n; p += 2)
+    if (!(n % p)) return false;
+  return true;
+}
+
+template<class coefficient_t>
+std::vector<coefficient_t> multiplicative_inverse_vector(const coefficient_t m) {
+  std::vector<coefficient_t> inverse(m);
+  inverse[1] = 1;
+  // m = a * (m / a) + m % a
+  // Multipying with inverse(a) * inverse(m % a):
+  // 0 = inverse(m % a) * (m / a) + inverse(a)  (mod m)
+  for (coefficient_t a = 2; a < m; ++a) inverse[a] = m - (inverse[m % a] * (m / a)) % m;
+  return inverse;
+}
+
+#ifdef INDICATE_PROGRESS
+constexpr std::chrono::milliseconds time_step(40);
+#endif
+constexpr const char* clear_line="\r\033[K";
+
+enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
+
+template <class index_t_, class value_t_, compressed_matrix_layout Layout> struct compressed_distance_matrix {
+  typedef index_t_ index_t;
+  typedef value_t_ value_t;
+  std::vector<value_t> distances;
+  std::vector<value_t*> rows;
+
+  compressed_distance_matrix(std::vector<value_t>&& _distances)
+    : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
+      assert(distances.size() == size() * (size() - 1) / 2);
+      init_rows();
+    }
+
+  template <typename DistanceMatrix>
+    compressed_distance_matrix(const DistanceMatrix& mat)
+    : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) {
+      init_rows();
+
+      for (size_t i = 1; i < size(); ++i)
+        for (size_t j = 0; j < i; ++j) rows[i][j] = mat(i, j);
+    }
+
+  value_t operator()(const index_t i, const index_t j) const {
+    if (i == j) return 0;
+    if ((Layout == LOWER_TRIANGULAR) ? (i < j) : (i > j))
+      return rows[j][i];
+    else
+      return rows[i][j];
+  }
+  size_t size() const { return rows.size(); }
+  void init_rows() {
+    if constexpr (Layout == LOWER_TRIANGULAR) {
+      value_t* pointer = &distances[0];
+      for (size_t i = 1; i < size(); ++i) {
+        rows[i] = pointer;
+        pointer += i;
+      }
+    } else { // UPPER_TRIANGULAR
+      value_t* pointer = &distances[0] - 1;
+      for (size_t i = 0; i < size() - 1; ++i) {
+        rows[i] = pointer;
+        pointer += size() - i - 2;
+      }
+    }
+  }
+};
+
 // Used as a template namespace
 template <class value_t_=float, class index_t_=int64_t, class coefficient_t_=uint16_t, std::size_t num_coefficient_bits_=8, bool use_coefficients_=false>
 struct Ripser_all {
@@ -75,12 +180,6 @@ struct Ripser_all {
   template <class Key, class T, class H, class E> using hash_map = boost::unordered_map<Key, T, H, E>;
 #endif
   template <class Key> using hash = boost::hash<Key>;
-
-#ifdef INDICATE_PROGRESS
-  static constexpr std::chrono::milliseconds time_step(40);
-#endif
-
-  static constexpr const char* clear_line="\r\033[K";
 
   class binomial_coeff_table {
     static constexpr index_t max_simplex_index =
@@ -110,23 +209,6 @@ struct Ripser_all {
     }
   };
 
-  static bool is_prime(const coefficient_t n) {
-    if (!(n & 1) || n < 2) return n == 2;
-    for (coefficient_t p = 3; p <= n / p; p += 2)
-      if (!(n % p)) return false;
-    return true;
-  }
-
-  static std::vector<coefficient_t> multiplicative_inverse_vector(const coefficient_t m) {
-    std::vector<coefficient_t> inverse(m);
-    inverse[1] = 1;
-    // m = a * (m / a) + m % a
-    // Multipying with inverse(a) * inverse(m % a):
-    // 0 = inverse(m % a) * (m / a) + inverse(a)  (mod m)
-    for (coefficient_t a = 2; a < m; ++a) inverse[a] = m - (inverse[m % a] * (m / a)) % m;
-    return inverse;
-  }
-
   struct entry_with_coeff_t {
     index_t index : 8 * sizeof(index_t) - num_coefficient_bits;
     coefficient_t coefficient : num_coefficient_bits;
@@ -150,11 +232,11 @@ struct Ripser_all {
   static void set_coefficient(entry_plain_t& e, const coefficient_t c) {}
 
   typedef std::conditional_t<use_coefficients, entry_with_coeff_t, entry_plain_t> entry_t;
-  entry_t make_entry(index_t i, coefficient_t c) {
+  static entry_t make_entry(index_t i, coefficient_t c) {
     if constexpr (use_coefficients)
-      return entry_plain_t(i);
-    else
       return entry_with_coeff_t(i, c);
+    else
+      return entry_plain_t(i);
   }
 
   static_assert(sizeof(entry_t) == sizeof(index_t), "size of entry_t is not the same as index_t");
@@ -200,54 +282,9 @@ struct Ripser_all {
     }
   };
 
-  enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
-  template <compressed_matrix_layout Layout> struct compressed_distance_matrix {
-    std::vector<value_t> distances;
-    std::vector<value_t*> rows;
-
-    compressed_distance_matrix(std::vector<value_t>&& _distances)
-      : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
-        assert(distances.size() == size() * (size() - 1) / 2);
-        init_rows();
-      }
-
-    template <typename DistanceMatrix>
-      compressed_distance_matrix(const DistanceMatrix& mat)
-      : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) {
-        init_rows();
-
-        for (size_t i = 1; i < size(); ++i)
-          for (size_t j = 0; j < i; ++j) rows[i][j] = mat(i, j);
-      }
-
-    value_t operator()(const index_t i, const index_t j) const {
-      if (i == j) return 0;
-      if ((Layout == LOWER_TRIANGULAR) ? (i < j) : (i > j))
-        return rows[j][i];
-      else
-        return rows[i][j];
-    }
-    size_t size() const { return rows.size(); }
-    void init_rows() {
-      if constexpr (Layout == LOWER_TRIANGULAR) {
-        value_t* pointer = &distances[0];
-        for (size_t i = 1; i < size(); ++i) {
-          rows[i] = pointer;
-          pointer += i;
-        }
-      } else { // UPPER_TRIANGULAR
-        value_t* pointer = &distances[0] - 1;
-        for (size_t i = 0; i < size() - 1; ++i) {
-          rows[i] = pointer;
-          pointer += size() - i - 2;
-        }
-      }
-    }
-  };
-
-  typedef compressed_distance_matrix<LOWER_TRIANGULAR> compressed_lower_distance_matrix;
-  typedef compressed_distance_matrix<UPPER_TRIANGULAR> compressed_upper_distance_matrix;
+  typedef compressed_distance_matrix<index_t, value_t, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
+  typedef compressed_distance_matrix<index_t, value_t, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
 
   struct sparse_distance_matrix {
     std::vector<std::vector<index_diameter_t>> neighbors;
@@ -301,36 +338,6 @@ struct Ripser_all {
     }
 
     size_t size() const { return points.size(); }
-  };
-
-  class union_find {
-    std::vector<index_t> parent;
-    std::vector<uint8_t> rank;
-
-    public:
-    union_find(const index_t n) : parent(n), rank(n, 0) {
-      for (index_t i = 0; i < n; ++i) parent[i] = i;
-    }
-
-    index_t find(index_t x) {
-      index_t y = x, z;
-      while ((z = parent[y]) != y) y = z;
-      while ((z = parent[x]) != y) {
-        parent[x] = y;
-        x = z;
-      }
-      return z;
-    }
-
-    void link(index_t x, index_t y) {
-      if ((x = find(x)) == (y = find(y))) return;
-      if (rank[x] > rank[y])
-        parent[y] = x;
-      else {
-        parent[x] = y;
-        if (rank[x] == rank[y]) ++rank[y];
-      }
-    }
   };
 
   template <typename ValueType> class compressed_sparse_matrix {
@@ -714,7 +721,7 @@ continue_outer:;
       std::cout << "persistence intervals in dim 0:" << std::endl;
 #endif
 
-      union_find dset(n);
+      union_find<index_t> dset(n);
 
       edges = get_edges();
       std::sort(edges.rbegin(), edges.rend(),
@@ -965,13 +972,13 @@ continue_outer:;
   };
 
   static constexpr uint16_t endian_check=0xff00;
-  static constexpr bool is_big_endian = *reinterpret_cast<const uint8_t*>(&endian_check);
+  static bool is_big_endian() { return *reinterpret_cast<const uint8_t*>(&endian_check); }
 
   template <typename T> T read(std::istream& input_stream) {
     T result;
     char* p = reinterpret_cast<char*>(&result);
     if (input_stream.read(p, sizeof(T)).gcount() != sizeof(T)) return T();
-    if (is_big_endian) std::reverse(p, p + sizeof(T));
+    if (is_big_endian()) std::reverse(p, p + sizeof(T));
     return result;
   }
 
@@ -1266,7 +1273,12 @@ continue_outer:;
             dim_max, threshold, ratio, modulus)
           .compute_barcodes();
       }
-      exit(0);
     }
+    return 0;
   }
 };
+
+// Just to instantiate and make sure it compiles, for now
+int main(int argc, char** argv) {
+  Ripser_all<> r; return r.main(argc,argv);
+}
