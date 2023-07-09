@@ -407,6 +407,8 @@ struct Ripser_all {
     }
 
   template <typename DistanceMatrix> class ripser {
+    typedef typename DistanceMatrix::index_t index_t;
+    typedef typename DistanceMatrix::value_t value_t;
     const DistanceMatrix dist;
     const index_t n, dim_max;
     const value_t threshold;
