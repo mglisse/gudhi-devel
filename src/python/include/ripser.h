@@ -324,6 +324,7 @@ struct Ripser_all {
             " in filtration is larger than maximum index " +
             std::to_string(max_simplex_index));
       // FIXME: the error message only works for int64_t (or smaller). For __int128, the cast to uint64_t makes the value useless, and to_string is not overloaded.
+      // to_chars may work with libstdc++, but it would be easier not to print the number at all.
     }
     std::vector<std::vector<simplex_t>> B;
 
