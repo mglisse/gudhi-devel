@@ -39,7 +39,6 @@
 
 //#define USE_COEFFICIENTS
 //#define INDICATE_PROGRESS
-//#define PRINT_PERSISTENCE_PAIRS // TODO replace that with calling a functor
 
 #include <algorithm>
 #include <cassert>
@@ -429,7 +428,6 @@ struct Ripser_all {
     const DistanceMatrix dist;
     const index_t n, dim_max;
     const value_t threshold;
-    const float ratio;
     const coefficient_t modulus;
     const binomial_coeff_table binomial_coeff;
     const std::vector<coefficient_t> multiplicative_inverse;
@@ -449,11 +447,10 @@ struct Ripser_all {
     typedef hash_map<entry_t, size_t, entry_hash, equal_index> entry_hash_map;
 
     public:
-    ripser(DistanceMatrix&& _dist, index_t _dim_max, value_t _threshold, float _ratio,
-        coefficient_t _modulus)
+    ripser(DistanceMatrix&& _dist, index_t _dim_max, value_t _threshold, coefficient_t _modulus)
       : dist(std::move(_dist)), n(dist.size()),
       dim_max(std::min(_dim_max, index_t(dist.size() - 2))), threshold(_threshold),
-      ratio(_ratio), modulus(_modulus), binomial_coeff(n, dim_max + 2),
+      modulus(_modulus), binomial_coeff(n, dim_max + 2),
       multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {}
 
     index_t get_max_vertex(const index_t idx, const index_t k, const index_t n) const {
@@ -760,12 +757,9 @@ continue_outer:;
 #endif
     }
 
+    template<class OutPair>
     void compute_dim_0_pairs(std::vector<diameter_index_t>& edges,
-        std::vector<diameter_index_t>& columns_to_reduce) {
-#ifdef PRINT_PERSISTENCE_PAIRS
-      std::cout << "persistence intervals in dim 0:" << std::endl;
-#endif
-
+        std::vector<diameter_index_t>& columns_to_reduce, OutPair& output_pair) {
       union_find<index_t> dset(n);
 
       edges = get_edges();
@@ -777,20 +771,16 @@ continue_outer:;
         index_t u = dset.find(vertices_of_edge[0]), v = dset.find(vertices_of_edge[1]);
 
         if (u != v) {
-#ifdef PRINT_PERSISTENCE_PAIRS
           if (get_diameter(e) != 0)
-            std::cout << " [0," << get_diameter(e) << ")" << std::endl;
-#endif
+            output_pair(0, get_diameter(e));
           dset.link(u, v);
         } else if ((dim_max > 0) && (get_index(get_zero_apparent_cofacet(e, 1)) == -1))
           columns_to_reduce.push_back(e);
       }
       if (dim_max > 0) std::reverse(columns_to_reduce.begin(), columns_to_reduce.end());
 
-#ifdef PRINT_PERSISTENCE_PAIRS
       for (index_t i = 0; i < n; ++i)
-        if (dset.find(i) == i) std::cout << " [0, )" << std::endl;
-#endif
+        if (dset.find(i) == i) output_pair(0, std::numeric_limits<value_t>::infinity());
     }
 
     template <typename Column> diameter_entry_t pop_pivot(Column& column) {
@@ -875,13 +865,9 @@ continue_outer:;
         }
       }
 
+    template<class OutPair>
     void compute_pairs(const std::vector<diameter_index_t>& columns_to_reduce,
-        entry_hash_map& pivot_column_index, const index_t dim) {
-
-#ifdef PRINT_PERSISTENCE_PAIRS
-      std::cout << "persistence intervals in dim " << dim << ":" << std::endl;
-#endif
-
+        entry_hash_map& pivot_column_index, const index_t dim, OutPair& output_pair) {
       compressed_sparse_matrix<diameter_entry_t> reduction_matrix;
       heap<diameter_entry_t, std::vector<diameter_entry_t>,
         greater_diameter_or_smaller_index<diameter_entry_t>>
@@ -933,15 +919,8 @@ continue_outer:;
 
               pivot = get_pivot(working_coboundary);
             } else {
-#ifdef PRINT_PERSISTENCE_PAIRS
               value_t death = get_diameter(pivot);
-              if (death > diameter * ratio) {
-#ifdef INDICATE_PROGRESS
-                std::cerr << clear_line << std::flush;
-#endif
-                std::cout << " [" << diameter << "," << death << ")" << std::endl;
-              }
-#endif
+              output_pair(diameter, death);
               pivot_column_index.insert({get_entry(pivot), index_column_to_reduce});
 
               while (true) {
@@ -953,12 +932,7 @@ continue_outer:;
               break;
             }
           } else {
-#ifdef PRINT_PERSISTENCE_PAIRS
-#ifdef INDICATE_PROGRESS
-            std::cerr << clear_line << std::flush;
-#endif
-            std::cout << " [" << diameter << ", )" << std::endl;
-#endif
+            output_pair(diameter, std::numeric_limits<value_t>::infinity());
             break;
           }
         }
@@ -989,16 +963,20 @@ continue_outer:;
       }
     }
 
-    void compute_barcodes() {
+    // Add a separate output_essential?
+    template<class OutDim, class OutPair>
+    void compute_barcodes(OutDim&& output_dim, OutPair&& output_pair) {
       std::vector<diameter_index_t> simplices, columns_to_reduce;
 
-      compute_dim_0_pairs(simplices, columns_to_reduce);
+      output_dim(0);
+      compute_dim_0_pairs(simplices, columns_to_reduce, output_pair);
 
       for (index_t dim = 1; dim <= dim_max; ++dim) {
         entry_hash_map pivot_column_index;
         pivot_column_index.reserve(columns_to_reduce.size());
 
-        compute_pairs(columns_to_reduce, pivot_column_index, dim);
+        output_dim(dim);
+        compute_pairs(columns_to_reduce, pivot_column_index, dim, output_pair);
 
         if (dim < dim_max)
           assemble_columns_to_reduce(simplices, columns_to_reduce, pivot_column_index,
@@ -1266,6 +1244,18 @@ continue_outer:;
       exit(-1);
     }
 
+    auto output_dim = [](int dim) {
+      std::cout << "persistence intervals in dim " << dim << ":" << std::endl;
+    };
+    auto output_pair = [ratio](value_t birth, value_t death) {
+#ifdef INDICATE_PROGRESS
+      std::cerr << clear_line << std::flush;
+#endif
+      if (death == std::numeric_limits<value_t>::infinity())
+        std::cout << " [" << birth << ", )" << std::endl;
+      else if (death > birth * ratio)
+        std::cout << " [" << birth << "," << death << ")" << std::endl;
+    };
     if (format == SPARSE) {
       sparse_distance_matrix dist =
         read_sparse_distance_matrix(filename ? file_stream : std::cin);
@@ -1273,12 +1263,12 @@ continue_outer:;
         << dist.num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
         << std::endl;
 
-      ripser<sparse_distance_matrix>(std::move(dist), dim_max, threshold, ratio, modulus)
-        .compute_barcodes();
+      ripser<sparse_distance_matrix>(std::move(dist), dim_max, threshold, modulus)
+        .compute_barcodes(output_dim, output_pair);
     } else if (format == POINT_CLOUD && threshold < std::numeric_limits<value_t>::max()) {
       sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
-      ripser<sparse_distance_matrix>(std::move(dist), dim_max, threshold, ratio, modulus)
-        .compute_barcodes();
+      ripser<sparse_distance_matrix>(std::move(dist), dim_max, threshold, modulus)
+        .compute_barcodes(output_dim, output_pair);
     } else {
       compressed_lower_distance_matrix dist =
         read_file(filename ? file_stream : std::cin, format);
@@ -1309,16 +1299,16 @@ continue_outer:;
           << " points, using threshold at enclosing radius " << enclosing_radius
           << std::endl;
         ripser<compressed_lower_distance_matrix>(std::move(dist), dim_max, enclosing_radius,
-            ratio, modulus)
-          .compute_barcodes();
+            modulus)
+          .compute_barcodes(output_dim, output_pair);
       } else {
         std::cout << "sparse distance matrix with " << dist.size() << " points and "
           << num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
           << std::endl;
 
         ripser<sparse_distance_matrix>(sparse_distance_matrix(std::move(dist), threshold),
-            dim_max, threshold, ratio, modulus)
-          .compute_barcodes();
+            dim_max, threshold, modulus)
+          .compute_barcodes(output_dim, output_pair);
       }
     }
     return 0;
