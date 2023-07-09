@@ -118,7 +118,8 @@ constexpr const char* clear_line="\r\033[K";
 
 enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
-template <class index_t_, class value_t_, compressed_matrix_layout Layout> struct compressed_distance_matrix {
+template <class index_t_, class value_t_, compressed_matrix_layout Layout>
+struct compressed_distance_matrix {
   typedef index_t_ index_t;
   typedef value_t_ value_t;
   std::vector<value_t> distances;
@@ -162,6 +163,79 @@ template <class index_t_, class value_t_, compressed_matrix_layout Layout> struc
       }
     }
   }
+};
+
+template <class index_t_, class value_t_>
+struct sparse_distance_matrix_ {
+  typedef index_t_ index_t;
+  typedef value_t_ value_t;
+  struct index_diameter_t {
+    index_diameter_t() =default;
+    index_diameter_t(index_t i_, value_t d_) : i(i_), d(d_) {}
+    index_t i; value_t d;
+    friend index_t get_index(const index_diameter_t& i) { return i.i; }
+    friend value_t get_diameter(const index_diameter_t& i) { return i.d; }
+    friend bool operator<(index_diameter_t const& a, index_diameter_t const& b) {
+      if (a.i < b.i) return true;
+      if (a.i > b.i) return false;
+      return a.d < b.d;
+    }
+  };
+
+  std::vector<std::vector<index_diameter_t>> neighbors;
+
+  index_t num_edges;
+
+  sparse_distance_matrix_(std::vector<std::vector<index_diameter_t>>&& _neighbors,
+      index_t _num_edges)
+    : neighbors(std::move(_neighbors)), num_edges(_num_edges) {}
+
+  template <typename DistanceMatrix>
+    sparse_distance_matrix_(const DistanceMatrix& mat, const value_t threshold)
+    : neighbors(mat.size()), num_edges(0) {
+
+      for (size_t i = 0; i < size(); ++i)
+        for (size_t j = 0; j < size(); ++j)
+          if (i != j) {
+            auto d = mat(i, j);
+            if (d <= threshold) {
+              ++num_edges;
+              neighbors[i].emplace_back(j, d);
+            }
+          }
+    }
+
+  value_t operator()(const index_t i, const index_t j) const {
+    auto neighbor =
+      std::lower_bound(neighbors[i].begin(), neighbors[i].end(), index_diameter_t{j, 0});
+    return (neighbor != neighbors[i].end() && get_index(*neighbor) == j)
+      ? get_diameter(*neighbor)
+      : std::numeric_limits<value_t>::infinity();
+  }
+
+  size_t size() const { return neighbors.size(); }
+};
+
+template <class index_t_, class value_t_>
+struct euclidean_distance_matrix_ {
+  typedef index_t_ index_t;
+  typedef value_t_ value_t;
+  std::vector<std::vector<value_t>> points;
+
+  euclidean_distance_matrix_(std::vector<std::vector<value_t>>&& _points)
+    : points(std::move(_points)) {
+      for (auto p : points) { assert(p.size() == points.front().size()); }
+    }
+
+  value_t operator()(const index_t i, const index_t j) const {
+    assert(i < points.size());
+    assert(j < points.size());
+    return std::sqrt(std::inner_product(
+          points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
+          [](value_t u, value_t v) { return (u - v) * (u - v); }));
+  }
+
+  size_t size() const { return points.size(); }
 };
 
 // Used as a template namespace
@@ -220,16 +294,25 @@ struct Ripser_all {
       stream << get_index(e) << ":" << get_coefficient(e);
       return stream;
     }
+    friend index_t get_index(const entry_with_coeff_t& e) { return e.index; }
+    friend index_t get_coefficient(const entry_with_coeff_t& e) { return e.coefficient; }
+    friend void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) { e.coefficient = c; }
+    friend const entry_with_coeff_t& get_entry(const entry_with_coeff_t& e) { return e; }
   };
 
-  static index_t get_index(const entry_with_coeff_t& e) { return e.index; }
-  static index_t get_coefficient(const entry_with_coeff_t& e) { return e.coefficient; }
-  static void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) { e.coefficient = c; }
-
-  typedef index_t entry_plain_t;
-  static const index_t get_index(const entry_plain_t& i) { return i; }
-  static index_t get_coefficient(const entry_plain_t& i) { return 1; }
-  static void set_coefficient(entry_plain_t& e, const coefficient_t c) {}
+  struct entry_plain_t {
+    index_t index;
+    entry_plain_t(index_t _index) : index(_index) {}
+    entry_plain_t() : index(0) {}
+    friend std::ostream& operator<<(std::ostream& stream, const entry_plain_t& e) {
+      stream << get_index(e);
+      return stream;
+    }
+    friend const index_t get_index(const entry_plain_t& i) { return i.index; }
+    friend index_t get_coefficient(const entry_plain_t& i) { return 1; }
+    friend void set_coefficient(entry_plain_t& e, const coefficient_t c) {}
+    friend const entry_plain_t& get_entry(const entry_plain_t& e) { return e; }
+  };
 
   typedef std::conditional_t<use_coefficients, entry_with_coeff_t, entry_plain_t> entry_t;
   static entry_t make_entry(index_t i, coefficient_t c) {
@@ -241,15 +324,12 @@ struct Ripser_all {
 
   static_assert(sizeof(entry_t) == sizeof(index_t), "size of entry_t is not the same as index_t");
 
-  static const entry_t& get_entry(const entry_t& e) { return e; }
-
-  typedef std::pair<value_t, index_t> diameter_index_t;
-  static value_t get_diameter(const diameter_index_t& i) { return i.first; }
-  static index_t get_index(const diameter_index_t& i) { return i.second; }
-
-  typedef std::pair<index_t, value_t> index_diameter_t;
-  static index_t get_index(const index_diameter_t& i) { return i.first; }
-  static value_t get_diameter(const index_diameter_t& i) { return i.second; }
+  struct diameter_index_t {
+    value_t diameter;
+    index_t index;
+    friend value_t get_diameter(const diameter_index_t& i) { return i.diameter; }
+    friend index_t get_index(const diameter_index_t& i) { return i.index; }
+  };
 
   struct diameter_entry_t : std::pair<value_t, entry_t> {
     using std::pair<value_t, entry_t>::pair;
@@ -262,18 +342,17 @@ struct Ripser_all {
       : diameter_entry_t(get_diameter(_diameter_index),
           make_entry(get_index(_diameter_index), 0)) {}
     diameter_entry_t(const index_t& _index) : diameter_entry_t(0, _index, 0) {}
+    friend const entry_t& get_entry(const diameter_entry_t& p) { return p.second; }
+    friend entry_t& get_entry(diameter_entry_t& p) { return p.second; }
+    friend const index_t get_index(const diameter_entry_t& p) { return get_index(get_entry(p)); }
+    friend const coefficient_t get_coefficient(const diameter_entry_t& p) {
+      return get_coefficient(get_entry(p));
+    }
+    friend const value_t& get_diameter(const diameter_entry_t& p) { return p.first; }
+    friend void set_coefficient(diameter_entry_t& p, const coefficient_t c) {
+      set_coefficient(get_entry(p), c);
+    }
   };
-
-  static const entry_t& get_entry(const diameter_entry_t& p) { return p.second; }
-  static entry_t& get_entry(diameter_entry_t& p) { return p.second; }
-  static const index_t get_index(const diameter_entry_t& p) { return get_index(get_entry(p)); }
-  static const coefficient_t get_coefficient(const diameter_entry_t& p) {
-    return get_coefficient(get_entry(p));
-  }
-  static const value_t& get_diameter(const diameter_entry_t& p) { return p.first; }
-  static void set_coefficient(diameter_entry_t& p, const coefficient_t c) {
-    set_coefficient(get_entry(p), c);
-  }
 
   template <typename Entry> struct greater_diameter_or_smaller_index {
     bool operator()(const Entry& a, const Entry& b) const {
@@ -282,63 +361,10 @@ struct Ripser_all {
     }
   };
 
-
   typedef compressed_distance_matrix<index_t, value_t, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
   typedef compressed_distance_matrix<index_t, value_t, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
-
-  struct sparse_distance_matrix {
-    std::vector<std::vector<index_diameter_t>> neighbors;
-
-    index_t num_edges;
-
-    sparse_distance_matrix(std::vector<std::vector<index_diameter_t>>&& _neighbors,
-        index_t _num_edges)
-      : neighbors(std::move(_neighbors)), num_edges(_num_edges) {}
-
-    template <typename DistanceMatrix>
-      sparse_distance_matrix(const DistanceMatrix& mat, const value_t threshold)
-      : neighbors(mat.size()), num_edges(0) {
-
-        for (size_t i = 0; i < size(); ++i)
-          for (size_t j = 0; j < size(); ++j)
-            if (i != j) {
-              auto d = mat(i, j);
-              if (d <= threshold) {
-                ++num_edges;
-                neighbors[i].push_back({j, d});
-              }
-            }
-      }
-
-    value_t operator()(const index_t i, const index_t j) const {
-      auto neighbor =
-        std::lower_bound(neighbors[i].begin(), neighbors[i].end(), index_diameter_t{j, 0});
-      return (neighbor != neighbors[i].end() && get_index(*neighbor) == j)
-        ? get_diameter(*neighbor)
-        : std::numeric_limits<value_t>::infinity();
-    }
-
-    size_t size() const { return neighbors.size(); }
-  };
-
-  struct euclidean_distance_matrix {
-    std::vector<std::vector<value_t>> points;
-
-    euclidean_distance_matrix(std::vector<std::vector<value_t>>&& _points)
-      : points(std::move(_points)) {
-        for (auto p : points) { assert(p.size() == points.front().size()); }
-      }
-
-    value_t operator()(const index_t i, const index_t j) const {
-      assert(i < points.size());
-      assert(j < points.size());
-      return std::sqrt(std::inner_product(
-            points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
-            [](value_t u, value_t v) { return (u - v) * (u - v); }));
-    }
-
-    size_t size() const { return points.size(); }
-  };
+  typedef sparse_distance_matrix_<index_t, value_t> sparse_distance_matrix;
+  typedef euclidean_distance_matrix_<index_t, value_t> euclidean_distance_matrix;
 
   template <typename ValueType> class compressed_sparse_matrix {
     std::vector<size_t> bounds;
@@ -499,6 +525,7 @@ struct Ripser_all {
     };
 
     template <class D> class Simplex_coboundary_enumerator<sparse_distance_matrix,D> {
+      typedef typename sparse_distance_matrix::index_diameter_t index_diameter_t;
       index_t idx_below, idx_above, k;
       std::vector<index_t> vertices;
       diameter_entry_t simplex;
@@ -1007,6 +1034,7 @@ continue_outer:;
   }
 
   sparse_distance_matrix read_sparse_distance_matrix(std::istream& input_stream) {
+    typedef typename sparse_distance_matrix::index_diameter_t index_diameter_t;
     std::vector<std::vector<index_diameter_t>> neighbors;
     index_t num_edges = 0;
 
@@ -1023,8 +1051,8 @@ continue_outer:;
       s.ignore();
       if (i != j) {
         neighbors.resize(std::max({neighbors.size(), i + 1, j + 1}));
-        neighbors[i].push_back({j, value});
-        neighbors[j].push_back({i, value});
+        neighbors[i].emplace_back(j, value);
+        neighbors[j].emplace_back(i, value);
         ++num_edges;
       }
     }
