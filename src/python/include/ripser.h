@@ -69,6 +69,8 @@ struct heap : std::priority_queue<T, V, C> {
 };
 #endif
 
+#define FIXME_STATIC static
+
 template<class vertex_t_>
 class union_find {
   public:
@@ -198,12 +200,12 @@ struct sparse_distance_matrix_ {
   };
 
   std::vector<std::vector<vertex_diameter_t>> neighbors;
-
+  //mutable boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
   size_t num_edges;
 
   sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
       size_t _num_edges)
-    : neighbors(std::move(_neighbors)), num_edges(_num_edges) {}
+    : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
 
   template <typename DistanceMatrix>
     sparse_distance_matrix_(const DistanceMatrix& mat, const value_t threshold)
@@ -218,14 +220,23 @@ struct sparse_distance_matrix_ {
               neighbors[i].emplace_back(j, d);
             }
           }
+      init();
     }
 
   value_t operator()(const vertex_t i, const vertex_t j) const {
+    //return m[std::minmax(i,j)];
     auto neighbor =
       std::lower_bound(neighbors[i].begin(), neighbors[i].end(), vertex_diameter_t{j, 0});
     return (neighbor != neighbors[i].end() && get_index(*neighbor) == j)
       ? get_diameter(*neighbor)
       : std::numeric_limits<value_t>::infinity();
+  }
+  void init() {
+    //for(vertex_t i=0; i<size(); ++i){
+    //  for(auto n:neighbors[i]){
+    //    m[std::minmax(i,get_index(n))]=get_diameter(n);
+    //  }
+    //}
   }
 
   vertex_t size() const { return neighbors.size(); }
@@ -294,7 +305,7 @@ template <typename ValueType> class compressed_sparse_matrix_ {
 };
 
 // Used as a template namespace
-template <class value_t_=double, class index_t_=int64_t, class coefficient_t_=uint16_t, int num_coefficient_bits_=8, bool use_coefficients_=false>
+template <class value_t_=float, class index_t_=int64_t, class coefficient_t_=uint16_t, int num_coefficient_bits_=8, bool use_coefficients_=false>
 struct Ripser_all {
 
   typedef std::size_t size_t;
@@ -686,7 +697,7 @@ continue_outer:;
 
     diameter_entry_t get_zero_pivot_facet(const diameter_entry_t simplex, const dimension_t dim) {
       // FIXME: static !!!
-      /*static*/ simplex_boundary_enumerator facets(0, *this);
+      FIXME_STATIC simplex_boundary_enumerator facets(0, *this);
       facets.set_simplex(simplex, dim);
       while (facets.has_next()) {
         diameter_entry_t facet = facets.next();
@@ -696,7 +707,7 @@ continue_outer:;
     }
 
     diameter_entry_t get_zero_pivot_cofacet(const diameter_entry_t simplex, const dimension_t dim) {
-      /*static*/ simplex_coboundary_enumerator cofacets(*this);
+      FIXME_STATIC simplex_coboundary_enumerator cofacets(*this);
       cofacets.set_simplex(simplex, dim);
       while (cofacets.has_next()) {
         diameter_entry_t cofacet = cofacets.next();
@@ -833,11 +844,12 @@ continue_outer:;
       return result;
     }
 
+    // Either return the pivot in an emergent pair, or fill working_coboundary with the full coboundary (and return its pivot)
     template <typename Column>
       diameter_entry_t init_coboundary_and_get_pivot(const diameter_entry_t simplex,
           Column& working_coboundary, const dimension_t dim,
           entry_hash_map& pivot_column_index) {
-        /*static*/ simplex_coboundary_enumerator cofacets(*this);
+        FIXME_STATIC simplex_coboundary_enumerator cofacets(*this);
         bool check_for_emergent_pair = true;
         cofacet_entries.clear();
         cofacets.set_simplex(simplex, dim);
@@ -860,7 +872,7 @@ continue_outer:;
     template <typename Column>
       void add_simplex_coboundary(const diameter_entry_t simplex, const dimension_t dim,
           Column& working_reduction_column, Column& working_coboundary) {
-        /*static*/ simplex_coboundary_enumerator cofacets(*this);
+        FIXME_STATIC simplex_coboundary_enumerator cofacets(*this);
         working_reduction_column.push(simplex);
         cofacets.set_simplex(simplex, dim);
         while (cofacets.has_next()) {
@@ -907,6 +919,7 @@ continue_outer:;
 
         diameter_entry_t e, pivot = init_coboundary_and_get_pivot(
             column_to_reduce, working_coboundary, dim, pivot_column_index);
+        // When we found an emergent pair, avoid checking again below?
 
         while (true) {
 #ifdef INDICATE_PROGRESS
