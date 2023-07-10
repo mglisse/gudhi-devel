@@ -189,6 +189,9 @@ struct sparse_distance_matrix_ {
   struct vertex_diameter_t {
     vertex_diameter_t() =default;
     vertex_diameter_t(vertex_t i_, value_t d_) : i(i_), d(d_) {}
+    // gcc is faster with those 2 lines (or with a std::pair) :-(
+    //vertex_diameter_t(vertex_diameter_t const&o)noexcept :i(o.i),d(o.d){}
+    //vertex_diameter_t&operator=(vertex_diameter_t const&o) noexcept{i=o.i;d=o.d;return*this;}
     vertex_t i; value_t d;
     friend vertex_t get_index(const vertex_diameter_t& i) { return i.i; }
     friend value_t get_diameter(const vertex_diameter_t& i) { return i.d; }
