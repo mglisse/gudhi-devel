@@ -721,6 +721,9 @@ continue_outer:;
       return diameter_entry_t(-1);
     }
 
+    // Apparent pairs are implicit in Ripser.
+    // pro: we don't need to store them
+    // con: we may have to recompute them many times, and each test is more expensive than emergent pairs
     diameter_entry_t get_zero_apparent_facet(const diameter_entry_t simplex, const dimension_t dim) {
       diameter_entry_t facet = get_zero_pivot_facet(simplex, dim);
       return ((get_index(facet) != -1) &&
@@ -771,6 +774,7 @@ continue_outer:;
           auto cofacet = cofacets.next();
           if (get_diameter(cofacet) <= threshold) {
             if (dim < dim_max) next_simplices.push_back({get_diameter(cofacet), get_index(cofacet)});
+            // Wouldn't it be cheaper in the reverse order? Seems negligible
             if (!is_in_zero_apparent_pair(cofacet, dim) &&
                 (pivot_column_index.find(get_entry(cofacet)) == pivot_column_index.end()))
               columns_to_reduce.push_back({get_diameter(cofacet), get_index(cofacet)});
