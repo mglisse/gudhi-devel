@@ -879,7 +879,7 @@ continue_outer:;
       }
 
     // Beyond apparent/emergent pairs, Ripser does the column reduction eagerly.
-    // To keep with the lazy paradigm, it would be possible to represent a column as a heap of coboundary_iterator, using the order of the current simplices pointed to by the iterators. The equivalent of `pop` would be ++ on the top iterator, which decreases its priority (or removes it if it reached the end). If we do it right, it could also help us notice if we have twice the same iterator and avoid computing its coboundary twice. Another advantage is that its size would be bounded by the number of simplices of dimension d instead of d+1 currently. (Dory seems to do something related but too complicated for me.)
+    // To keep with the lazy paradigm, it would be possible to represent a column as a heap of coboundary_iterator, using the order of the current simplices pointed to by the iterators. The equivalent of `pop` would be ++ on the top iterator, which decreases its priority (or removes it if it reached the end). If we do it right, it could also help us notice if we have twice the same iterator and avoid computing its full coboundary twice (although we may still end up computing the first simplex of the coboundary for both, since it may be the easiest way to detect duplicates without maintaining yet another structure on the side). Another advantage is that its size would be bounded by the number of simplices of dimension d instead of d+1 currently. (Dory seems to do something related but too complicated for me.)
     template <typename Column>
       void add_simplex_coboundary(const diameter_entry_t simplex, const dimension_t dim,
           Column& working_reduction_column, Column& working_coboundary) {
