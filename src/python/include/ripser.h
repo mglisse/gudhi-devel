@@ -514,6 +514,7 @@ struct Ripser_all {
       return diam;
     }
 
+    // TODO: document in what way (if any) the order matters
     template<class DistanceMatrix2, class=void> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
       simplex_t idx_below, idx_above;
       vertex_t j;
@@ -562,6 +563,7 @@ struct Ripser_all {
         value_t cofacet_diameter = get_diameter(simplex);
         for (vertex_t i : vertices) cofacet_diameter = std::max(cofacet_diameter, dist(j, i));
         simplex_t cofacet_index = idx_above + binomial_coeff(j--, k + 1) + idx_below;
+        // TODO: avoid this %, using coeff or modulus-coeff
         coefficient_t cofacet_coefficient =
           (k & 1 ? modulus - 1 : 1) * get_coefficient(simplex) % modulus;
         return diameter_entry_t(cofacet_diameter, cofacet_index, cofacet_coefficient);
@@ -983,6 +985,7 @@ continue_outer:;
       if constexpr (!std::is_same_v<DistanceMatrix, sparse_distance_matrix>) { // compressed_lower_distance_matrix
         std::vector<diameter_simplex_t> edges;
         std::vector<vertex_t> vertices(2);
+        // Why not iterate on the pairs of vertices, to save a call to get_simplex_vertices?
         for (edge_t index = binomial_coeff(n, 2); index-- > 0;) {
           get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
           value_t length = dist(vertices[0], vertices[1]);
