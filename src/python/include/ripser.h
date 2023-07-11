@@ -923,7 +923,7 @@ continue_outer:;
 
         diameter_entry_t e, pivot = init_coboundary_and_get_pivot(
             column_to_reduce, working_coboundary, dim, pivot_column_index);
-        // When we found an emergent pair, avoid checking again below?
+        // When we found an emergent pair, we could avoid checking again below, but it does not seem to gain anything in practice.
 
         while (true) {
 #ifdef INDICATE_PROGRESS
