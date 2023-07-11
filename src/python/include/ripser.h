@@ -884,6 +884,7 @@ continue_outer:;
         }
       }
 
+    // add an already reduced column, i.e. add all the simplex coboundaries that were involved in that reduction
     template <typename Column>
       void add_coboundary(compressed_sparse_matrix& reduction_matrix,
           const std::vector<diameter_simplex_t>& columns_to_reduce,
@@ -943,6 +944,7 @@ continue_outer:;
                 multiplicative_inverse[get_coefficient(other_pivot)] %
                 modulus;
 
+              // It saves a little bit (3% on an example, 0% on another) if we pass pivot to add_coboundary and avoid pushing entries smaller than pivot in working_coboundary
               add_coboundary(reduction_matrix, columns_to_reduce, index_column_to_add,
                   factor, dim, working_reduction_column, working_coboundary);
 
