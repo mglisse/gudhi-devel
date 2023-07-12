@@ -40,6 +40,9 @@
 //#define USE_COEFFICIENTS
 //#define INDICATE_PROGRESS
 
+// #define USE_BOOST_HEAP // only useful when heap::push dominates?
+// #define USE_HASHMAP_FOR_SPARSE_DIST_MAT // only useful in cases where edge-collapse is more important?
+
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -203,7 +206,13 @@ struct sparse_distance_matrix_ {
   };
 
   std::vector<std::vector<vertex_diameter_t>> neighbors;
-  //mutable boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
+#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+#if BOOST_VERSION >= 108100
+  boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
+#else
+  boost::unordered_map<std::pair<vertex_t,vertex_t>,value_t> m;
+#endif
+#endif
   size_t num_edges;
 
   sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
@@ -227,19 +236,24 @@ struct sparse_distance_matrix_ {
     }
 
   value_t operator()(const vertex_t i, const vertex_t j) const {
-    //return m[std::minmax(i,j)];
+#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+    return m.at(std::minmax(i,j));
+#else
     auto neighbor =
       std::lower_bound(neighbors[i].begin(), neighbors[i].end(), vertex_diameter_t{j, 0});
     return (neighbor != neighbors[i].end() && get_index(*neighbor) == j)
       ? get_diameter(*neighbor)
       : std::numeric_limits<value_t>::infinity();
+#endif
   }
   void init() {
-    //for(vertex_t i=0; i<size(); ++i){
-    //  for(auto n:neighbors[i]){
-    //    m[std::minmax(i,get_index(n))]=get_diameter(n);
-    //  }
-    //}
+#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+    for(vertex_t i=0; i<size(); ++i){
+      for(auto n:neighbors[i]){
+        m[std::minmax(i,get_index(n))]=get_diameter(n);
+      }
+    }
+#endif
   }
 
   vertex_t size() const { return neighbors.size(); }
@@ -686,6 +700,10 @@ continue_outer:;
 
           simplex_t face_index = idx_above - binomial_coeff(j, k + 1) + idx_below;
 
+          // It would make sense to extract the vertices once in set_simplex
+          // and pass the proper subset to compute_diameter, but even in cases
+          // where this dominates it does not seem to help (probably because we
+          // stop at the first coface).
           value_t face_diameter = parent.compute_diameter(face_index, dim - 1);
 
           coefficient_t face_coefficient =
@@ -967,6 +985,7 @@ continue_outer:;
               value_t death = get_diameter(pivot);
               output_pair(diameter, death);
               pivot_column_index.insert({get_entry(pivot), index_column_to_reduce});
+              // CubicalRipser suggests caching the column here, at least if it took many operations to reduce it.
 
               while (true) {
                 diameter_entry_t e = pop_pivot(working_reduction_column);
