@@ -360,10 +360,10 @@ struct Ripser_all {
     binomial_coeff_table(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
       for (vertex_t i = 0; i <= n; ++i) {
         B[0][i] = 1;
-        for (dimension_t j = 1; (vertex_t)j < std::min(i, (vertex_t)k + 1); ++j)
+        for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
           B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
         if (i <= k) B[i][i] = 1;
-        check_overflow(B[std::min(i >> 1, (vertex_t)k)][i]);
+        check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i]);
       }
     }
 
@@ -489,13 +489,13 @@ struct Ripser_all {
     public:
     ripser(DistanceMatrix&& _dist, dimension_t _dim_max, value_t _threshold, coefficient_t _modulus)
       : dist(std::move(_dist)), n(dist.size()),
-      dim_max(std::min(_dim_max, dimension_t(dist.size() - 2))), threshold(_threshold),
+      dim_max(std::min<vertex_t>(_dim_max, dist.size() - 2)), threshold(_threshold),
       modulus(_modulus), binomial_coeff(n, dim_max + 2),
       multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {}
 
     // TODO: split out all the code about CNS, so we can easily plug something else
     vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
-      return get_max(n, (vertex_t)k - 1, [&](vertex_t w) -> bool { return (binomial_coeff(w, k) <= idx); });
+      return get_max<vertex_t>(n, k - 1, [&](vertex_t w) -> bool { return (binomial_coeff(w, k) <= idx); });
     }
 
     edge_t get_edge_index(const vertex_t i, const vertex_t j) const {
