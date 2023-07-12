@@ -407,6 +407,7 @@ struct Ripser_all {
         const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
         if (bits_per_vertex * k > available_bits)
           throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
+        // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
       }
 
       simplex_t operator()(vertex_t n, dimension_t k) const {
