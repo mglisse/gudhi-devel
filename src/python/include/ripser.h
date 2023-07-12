@@ -471,7 +471,7 @@ struct Ripser_all {
   typedef sparse_distance_matrix_<vertex_t, value_t> sparse_distance_matrix;
   typedef euclidean_distance_matrix_<vertex_t, value_t> euclidean_distance_matrix;
 
-  template <typename DistanceMatrix> class ripser {
+  template <typename DistanceMatrix, typename SimplexEncoding = binomial_coeff_table> class ripser {
     // ???
     // typedef typename DistanceMatrix::value_t value_t;
     // typedef ...
@@ -482,7 +482,7 @@ struct Ripser_all {
     const dimension_t dim_max;
     const value_t threshold;
     const coefficient_t modulus;
-    const binomial_coeff_table binomial_coeff;
+    const SimplexEncoding simplex_encoding;
     const std::vector<coefficient_t> multiplicative_inverse;
     mutable std::vector<diameter_entry_t> cofacet_entries;
     mutable std::vector<vertex_t> vertices;
@@ -503,12 +503,12 @@ struct Ripser_all {
     ripser(DistanceMatrix&& _dist, dimension_t _dim_max, value_t _threshold, coefficient_t _modulus)
       : dist(std::move(_dist)), n(dist.size()),
       dim_max(std::min<vertex_t>(_dim_max, dist.size() - 2)), threshold(_threshold),
-      modulus(_modulus), binomial_coeff(n, dim_max + 2),
+      modulus(_modulus), simplex_encoding(n, dim_max + 2),
       multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {}
 
     // TODO: split out all the code about CNS, so we can easily plug something else
     edge_t get_edge_index(const vertex_t i, const vertex_t j) const {
-      return binomial_coeff(i, 2) + j;
+      return simplex_encoding(i, 2) + j;
     }
 
     template <typename OutputIterator>
@@ -516,9 +516,9 @@ struct Ripser_all {
           OutputIterator out) const {
         --n;
         for (dimension_t k = dim + 1; k > 1; --k) {
-          n = binomial_coeff.get_max_vertex(idx, k, n);
+          n = simplex_encoding.get_max_vertex(idx, k, n);
           *out++ = n;
-          idx -= binomial_coeff(n, k);
+          idx -= simplex_encoding(n, k);
         }
         *out = idx;
         return out;
@@ -550,7 +550,7 @@ struct Ripser_all {
           }
         }
 #else
-        for (edge_t index = binomial_coeff(n, 2); index-- > 0;) {
+        for (edge_t index = simplex_encoding(n, 2); index-- > 0;) {
           get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
           value_t length = dist(vertices[0], vertices[1]);
           if (length <= threshold) edges.push_back({length, index});
@@ -577,20 +577,20 @@ struct Ripser_all {
       diameter_entry_t simplex;
       const coefficient_t modulus;
       const DistanceMatrix2& dist;
-      const binomial_coeff_table& binomial_coeff;
+      const SimplexEncoding& simplex_encoding;
       const ripser& parent; // for n and get_simplex_vertices
 
       public:
       Simplex_coboundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
           const ripser& _parent)
         : modulus(_parent.modulus), dist(_parent.dist),
-        binomial_coeff(_parent.binomial_coeff), parent(_parent) {
+        simplex_encoding(_parent.simplex_encoding), parent(_parent) {
           if (get_index(_simplex) != -1)
             parent.get_simplex_vertices(get_index(_simplex), _dim, parent.n, vertices.rbegin());
         }
 
       Simplex_coboundary_enumerator(const ripser& _parent) : modulus(_parent.modulus), dist(_parent.dist),
-      binomial_coeff(_parent.binomial_coeff), parent(_parent) {}
+      simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
       void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
         idx_below = get_index(_simplex);
@@ -603,20 +603,20 @@ struct Ripser_all {
       }
 
       bool has_next(bool all_cofacets = true) {
-        return (j >= k && (all_cofacets || binomial_coeff(j, k) > idx_below));
+        return (j >= k && (all_cofacets || simplex_encoding(j, k) > idx_below));
       }
 
       diameter_entry_t next() {
-        while ((binomial_coeff(j, k) <= idx_below)) {
-          idx_below -= binomial_coeff(j, k);
-          idx_above += binomial_coeff(j, k + 1);
+        while ((simplex_encoding(j, k) <= idx_below)) {
+          idx_below -= simplex_encoding(j, k);
+          idx_above += simplex_encoding(j, k + 1);
           --j;
           --k;
           assert(k != -1);
         }
         value_t cofacet_diameter = get_diameter(simplex);
         for (vertex_t i : vertices) cofacet_diameter = std::max(cofacet_diameter, dist(j, i));
-        simplex_t cofacet_index = idx_above + binomial_coeff(j--, k + 1) + idx_below;
+        simplex_t cofacet_index = idx_above + simplex_encoding(j--, k + 1) + idx_below;
         // TODO: avoid this %, using coeff or modulus-coeff
         coefficient_t cofacet_coefficient =
           (k & 1 ? modulus - 1 : 1) * get_coefficient(simplex) % modulus;
@@ -632,7 +632,7 @@ struct Ripser_all {
       diameter_entry_t simplex;
       const coefficient_t modulus;
       const sparse_distance_matrix& dist;
-      const binomial_coeff_table& binomial_coeff;
+      const SimplexEncoding& simplex_encoding;
       std::vector<typename std::vector<vertex_diameter_t>::const_reverse_iterator> neighbor_it;
       std::vector<typename std::vector<vertex_diameter_t>::const_reverse_iterator> neighbor_end;
       vertex_diameter_t neighbor;
@@ -642,13 +642,13 @@ struct Ripser_all {
       Simplex_coboundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
           const ripser& _parent)
         : modulus(_parent.modulus), dist(_parent.dist),
-        binomial_coeff(_parent.binomial_coeff), parent(_parent) {
+        simplex_encoding(_parent.simplex_encoding), parent(_parent) {
           if (get_index(_simplex) != -1) set_simplex(_simplex, _dim);
         }
 
       Simplex_coboundary_enumerator(const ripser& _parent)
         : modulus(_parent.modulus), dist(_parent.dist),
-        binomial_coeff(_parent.binomial_coeff), parent(_parent) {}
+        simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
       void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
         idx_below = get_index(_simplex);
@@ -681,8 +681,8 @@ struct Ripser_all {
           }
           while (k > 0 && vertices[k - 1] > get_index(neighbor)) {
             if (!all_cofacets) return false;
-            idx_below -= binomial_coeff(vertices[k - 1], k);
-            idx_above += binomial_coeff(vertices[k - 1], k + 1);
+            idx_below -= simplex_encoding(vertices[k - 1], k);
+            idx_above += simplex_encoding(vertices[k - 1], k + 1);
             --k;
           }
           return true;
@@ -694,7 +694,7 @@ continue_outer:;
       diameter_entry_t next() {
         ++neighbor_it[0];
         value_t cofacet_diameter = std::max(get_diameter(simplex), get_diameter(neighbor));
-        simplex_t cofacet_index = idx_above + binomial_coeff(get_index(neighbor), k + 1) + idx_below;
+        simplex_t cofacet_index = idx_above + simplex_encoding(get_index(neighbor), k + 1) + idx_below;
         coefficient_t cofacet_coefficient =
           (k & 1 ? modulus - 1 : 1) * get_coefficient(simplex) % modulus;
         return diameter_entry_t(cofacet_diameter, cofacet_index, cofacet_coefficient);
@@ -711,14 +711,14 @@ continue_outer:;
         diameter_entry_t simplex;
         dimension_t dim;
         const coefficient_t modulus;
-        const binomial_coeff_table& binomial_coeff;
+        const SimplexEncoding& simplex_encoding;
         const ripser& parent; // for n, get_max_vertex, compute_diameter
 
       public:
         simplex_boundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
             const ripser& _parent)
           : idx_below(get_index(_simplex)), idx_above(0), j(_parent.n - 1), k(_dim),
-          simplex(_simplex), modulus(_parent.modulus), binomial_coeff(_parent.binomial_coeff),
+          simplex(_simplex), modulus(_parent.modulus), simplex_encoding(_parent.simplex_encoding),
           parent(_parent) {}
 
         simplex_boundary_enumerator(const dimension_t _dim, const ripser& _parent)
@@ -736,9 +736,9 @@ continue_outer:;
         bool has_next() { return (k >= 0); }
 
         diameter_entry_t next() {
-          j = parent.binomial_coeff.get_max_vertex(idx_below, k + 1, j);
+          j = parent.simplex_encoding.get_max_vertex(idx_below, k + 1, j);
 
-          simplex_t face_index = idx_above - binomial_coeff(j, k + 1) + idx_below;
+          simplex_t face_index = idx_above - simplex_encoding(j, k + 1) + idx_below;
 
           // It would make sense to extract the vertices once in set_simplex
           // and pass the proper subset to compute_diameter, but even in cases
@@ -749,8 +749,8 @@ continue_outer:;
           coefficient_t face_coefficient =
             (k & 1 ? -1 + modulus : 1) * get_coefficient(simplex) % modulus;
 
-          idx_below -= binomial_coeff(j, k + 1);
-          idx_above += binomial_coeff(j, k);
+          idx_below -= simplex_encoding(j, k + 1);
+          idx_above += simplex_encoding(j, k);
 
           --k;
 
