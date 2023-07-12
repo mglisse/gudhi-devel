@@ -281,22 +281,6 @@ struct euclidean_distance_matrix_ {
   vertex_t size() const { return points.size(); }
 };
 
-template <class vertex_t, class Predicate>
-vertex_t get_max(vertex_t top, const vertex_t bottom, const Predicate pred) {
-  if (!pred(top)) {
-    vertex_t count = top - bottom;
-    while (count > 0) {
-      vertex_t step = count >> 1, mid = top - step;
-      if (!pred(mid)) {
-        top = mid - 1;
-        count -= step + 1;
-      } else
-        count = step;
-    }
-  }
-  return top;
-}
-
 template <typename ValueType> class compressed_sparse_matrix_ {
   std::vector<size_t> bounds;
   std::vector<ValueType> entries;
@@ -344,33 +328,61 @@ struct Ripser_all {
   template <class Key> using hash = boost::hash<Key>;
 
   class binomial_coeff_table {
-    static constexpr simplex_t max_simplex_index =
-      (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
-    static void check_overflow(simplex_t i) {
-      if (use_coefficients ? (i > max_simplex_index) : (i < 0))
-        throw std::overflow_error("simplex index " + std::to_string((uint64_t)i) +
-            " in filtration is larger than maximum index " +
-            std::to_string(max_simplex_index));
-      // FIXME: the error message only works for int64_t (or smaller). For __int128, the cast to uint64_t makes the value useless, and to_string is not overloaded.
-      // to_chars may work with libstdc++, but it would be easier not to print the number at all.
-    }
-    std::vector<std::vector<simplex_t>> B;
+    public:
+      // using vertex_t = ;
+      // using simplex_t = ;
+      // using dimension_t = ;
+      // ?? using coefficient_t = ;
+      // ?? static constexpr num_coefficient_bits = ;
+    private:
+      static constexpr simplex_t max_simplex_index =
+        (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
+      static void check_overflow(simplex_t i) {
+        if (use_coefficients ? (i > max_simplex_index) : (i < 0))
+          throw std::overflow_error("simplex index " + std::to_string((uint64_t)i) +
+              " in filtration is larger than maximum index " +
+              std::to_string(max_simplex_index));
+        // FIXME: the error message only works for int64_t (or smaller). For __int128, the cast to uint64_t makes the value useless, and to_string is not overloaded.
+        // to_chars may work with libstdc++, but it would be easier not to print the number at all (print n and k instead).
+      }
+      std::vector<std::vector<simplex_t>> B;
 
     public:
-    binomial_coeff_table(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
-      for (vertex_t i = 0; i <= n; ++i) {
-        B[0][i] = 1;
-        for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
-          B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
-        if (i <= k) B[i][i] = 1;
-        check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i]);
+      binomial_coeff_table(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+        for (vertex_t i = 0; i <= n; ++i) {
+          B[0][i] = 1;
+          for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
+            B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
+          if (i <= k) B[i][i] = 1;
+          check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i]);
+        }
       }
-    }
 
-    simplex_t operator()(vertex_t n, dimension_t k) const {
-      assert(n < B.size() && k < B[n].size() && n >= k - 1);
-      return B[k][n];
-    }
+      simplex_t operator()(vertex_t n, dimension_t k) const {
+        assert(n < B.size() && k < B[n].size() && n >= k - 1);
+        return B[k][n];
+      }
+
+      vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
+        return get_max(n, k - 1, [&](vertex_t w) -> bool { return (*this)(w, k) <= idx; });
+      }
+
+    private:
+      template <class Predicate>
+        static vertex_t get_max(vertex_t top, const vertex_t bottom, const Predicate pred) {
+          if (!pred(top)) {
+            vertex_t count = top - bottom;
+            while (count > 0) {
+              vertex_t step = count >> 1, mid = top - step;
+              if (!pred(mid)) {
+                top = mid - 1;
+                count -= step + 1;
+              } else
+                count = step;
+            }
+          }
+          return top;
+        }
   };
 
   struct entry_with_coeff_t {
@@ -385,6 +397,7 @@ struct Ripser_all {
       return stream;
     }
     friend simplex_t get_index(const entry_with_coeff_t& e) { return e.index; }
+    // TODO: if we never store 0, we could store coef-1 so %3 only requires num_coefficient_bits=1
     friend simplex_t get_coefficient(const entry_with_coeff_t& e) { return e.coefficient; }
     friend void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) { e.coefficient = c; }
     friend const entry_with_coeff_t& get_entry(const entry_with_coeff_t& e) { return e; }
@@ -494,10 +507,6 @@ struct Ripser_all {
       multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {}
 
     // TODO: split out all the code about CNS, so we can easily plug something else
-    vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
-      return get_max<vertex_t>(n, k - 1, [&](vertex_t w) -> bool { return (binomial_coeff(w, k) <= idx); });
-    }
-
     edge_t get_edge_index(const vertex_t i, const vertex_t j) const {
       return binomial_coeff(i, 2) + j;
     }
@@ -507,7 +516,7 @@ struct Ripser_all {
           OutputIterator out) const {
         --n;
         for (dimension_t k = dim + 1; k > 1; --k) {
-          n = get_max_vertex(idx, k, n);
+          n = binomial_coeff.get_max_vertex(idx, k, n);
           *out++ = n;
           idx -= binomial_coeff(n, k);
         }
@@ -727,7 +736,7 @@ continue_outer:;
         bool has_next() { return (k >= 0); }
 
         diameter_entry_t next() {
-          j = parent.get_max_vertex(idx_below, k + 1, j);
+          j = parent.binomial_coeff.get_max_vertex(idx_below, k + 1, j);
 
           simplex_t face_index = idx_above - binomial_coeff(j, k + 1) + idx_below;
 
