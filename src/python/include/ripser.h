@@ -238,6 +238,7 @@ struct sparse_distance_matrix_ {
   value_t operator()(const vertex_t i, const vertex_t j) const {
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
     return m.at(std::minmax(i,j));
+    // We never hit the infinity case?
 #else
     auto neighbor =
       std::lower_bound(neighbors[i].begin(), neighbors[i].end(), vertex_diameter_t{j, 0});
@@ -314,7 +315,7 @@ struct Ripser_all {
   typedef index_t_ index_t; // TODO: split into index_vertex_t / index_simplex_t / ... (some can be 128 bits, while it makes no sense for others)
   typedef int dimension_t;
   typedef index_t vertex_t; // TODO: can be different
-  typedef index_t simplex_t; // TODO: can be different
+  typedef __int128 simplex_t; // TODO: can be different
   typedef simplex_t edge_t; // TODO: can be different, but not convenient...
   // Assumptions used in the code: dimension_t smaller than vertex_t
   typedef coefficient_t_ coefficient_t;
@@ -337,15 +338,14 @@ struct Ripser_all {
     private:
       static constexpr simplex_t max_simplex_index =
         (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
-      static void check_overflow(simplex_t i) {
-        if (use_coefficients ? (i > max_simplex_index) : (i < 0))
-          throw std::overflow_error("simplex index " + std::to_string((uint64_t)i) +
-              " in filtration is larger than maximum index " +
-              std::to_string(max_simplex_index));
-        // FIXME: the error message only works for int64_t (or smaller). For __int128, the cast to uint64_t makes the value useless, and to_string is not overloaded.
-        // to_chars may work with libstdc++, but it would be easier not to print the number at all (print n and k instead).
+      static void check_overflow(simplex_t i, vertex_t n, dimension_t k) {
+        if (use_coefficients ? (i > max_simplex_index) : (i < 0)) {
+          const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
+          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
+          // Printing max_simplex_index would cause problems when using __int128.
+        }
       }
-      std::vector<std::vector<simplex_t>> B;
+      std::vector<std::vector<simplex_t>> B; // table of binomial coefficients
 
     public:
       binomial_coeff_table(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
@@ -354,7 +354,7 @@ struct Ripser_all {
           for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
             B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
           if (i <= k) B[i][i] = 1;
-          check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i]);
+          check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i], n, k);
         }
       }
 
@@ -383,6 +383,52 @@ struct Ripser_all {
           }
           return top;
         }
+  };
+
+  class bitfield_encoding {
+    public:
+      // using vertex_t = ;
+      // using simplex_t = ;
+      // using dimension_t = ;
+      // ?? using coefficient_t = ;
+      // ?? static constexpr num_coefficient_bits = ;
+
+    private:
+      int bits_per_vertex;
+      // number of bits necessary to store x with 0 <= x < n
+      static constexpr int log2up(vertex_t n) {
+        --n;
+        int k = 0;
+        while(n>0) { n>>=1; ++k; }
+        return k;
+      }
+    public:
+      bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
+        const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
+        if (bits_per_vertex * k > available_bits)
+          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
+      }
+
+      simplex_t operator()(vertex_t n, dimension_t k) const {
+        if(k==0) return 1; // because of odd use in (co)boundary...
+        --k;
+        // USE_N_MINUS_K only useful if it somehow helps remove the test k==0 above
+#ifdef USE_N_MINUS_K
+        return (simplex_t)(n - k) << (bits_per_vertex * k);
+#else
+        return (simplex_t)n << (bits_per_vertex * k);
+#endif
+      }
+
+      vertex_t get_max_vertex(const simplex_t idx, dimension_t k, const vertex_t) const {
+        assert(k > 0);
+        --k;
+#ifdef USE_N_MINUS_K
+        return (idx >> (bits_per_vertex * k)) + k;
+#else
+        return (idx >> (bits_per_vertex * k));
+#endif
+      }
   };
 
   struct entry_with_coeff_t {
@@ -471,7 +517,7 @@ struct Ripser_all {
   typedef sparse_distance_matrix_<vertex_t, value_t> sparse_distance_matrix;
   typedef euclidean_distance_matrix_<vertex_t, value_t> euclidean_distance_matrix;
 
-  template <typename DistanceMatrix, typename SimplexEncoding = binomial_coeff_table> class ripser {
+  template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding> class ripser {
     // ???
     // typedef typename DistanceMatrix::value_t value_t;
     // typedef ...
@@ -607,7 +653,7 @@ struct Ripser_all {
       }
 
       diameter_entry_t next() {
-        while ((simplex_encoding(j, k) <= idx_below)) {
+        while (simplex_encoding(j, k) <= idx_below) {
           idx_below -= simplex_encoding(j, k);
           idx_above += simplex_encoding(j, k + 1);
           --j;
