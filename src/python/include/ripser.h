@@ -1010,12 +1010,21 @@ continue_outer:;
       if constexpr (!std::is_same_v<DistanceMatrix, sparse_distance_matrix>) { // compressed_lower_distance_matrix
         std::vector<diameter_simplex_t> edges;
         std::vector<vertex_t> vertices(2);
-        // Why not iterate on the pairs of vertices, to save a call to get_simplex_vertices?
+#if 1
+        // This version avoids a call to get_simplex_vertices
+        for (vertex_t i = 0; i < n; ++i) {
+          for (vertex_t j = 0; j < i; ++j) {
+            value_t length = dist(i, j);
+            if (length <= threshold) edges.push_back({length, get_edge_index(i, j)});
+          }
+        }
+#else
         for (edge_t index = binomial_coeff(n, 2); index-- > 0;) {
           get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
           value_t length = dist(vertices[0], vertices[1]);
           if (length <= threshold) edges.push_back({length, index});
         }
+#endif
         return edges;
       } else { // sparse_distance_matrix
         std::vector<diameter_simplex_t> edges;
