@@ -528,6 +528,37 @@ struct Ripser_all {
       return diam;
     }
 
+    std::vector<diameter_simplex_t> get_edges() {
+      if constexpr (!std::is_same_v<DistanceMatrix, sparse_distance_matrix>) { // compressed_lower_distance_matrix
+        std::vector<diameter_simplex_t> edges;
+        std::vector<vertex_t> vertices(2);
+#if 1
+        // This version avoids a call to get_simplex_vertices
+        for (vertex_t i = 0; i < n; ++i) {
+          for (vertex_t j = 0; j < i; ++j) {
+            value_t length = dist(i, j);
+            if (length <= threshold) edges.push_back({length, get_edge_index(i, j)});
+          }
+        }
+#else
+        for (edge_t index = binomial_coeff(n, 2); index-- > 0;) {
+          get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
+          value_t length = dist(vertices[0], vertices[1]);
+          if (length <= threshold) edges.push_back({length, index});
+        }
+#endif
+        return edges;
+      } else { // sparse_distance_matrix
+        std::vector<diameter_simplex_t> edges;
+        for (vertex_t i = 0; i < n; ++i)
+          for (auto n : dist.neighbors[i]) {
+            vertex_t j = get_index(n);
+            if (i > j) edges.push_back({get_diameter(n), get_edge_index(i, j)});
+          }
+        return edges;
+      }
+    }
+
     // TODO: document in what way (if any) the order matters
     template<class DistanceMatrix2, class=void> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
       simplex_t idx_below, idx_above;
@@ -1004,37 +1035,6 @@ continue_outer:;
 #ifdef INDICATE_PROGRESS
       std::cerr << clear_line << std::flush;
 #endif
-    }
-
-    std::vector<diameter_simplex_t> get_edges() {
-      if constexpr (!std::is_same_v<DistanceMatrix, sparse_distance_matrix>) { // compressed_lower_distance_matrix
-        std::vector<diameter_simplex_t> edges;
-        std::vector<vertex_t> vertices(2);
-#if 1
-        // This version avoids a call to get_simplex_vertices
-        for (vertex_t i = 0; i < n; ++i) {
-          for (vertex_t j = 0; j < i; ++j) {
-            value_t length = dist(i, j);
-            if (length <= threshold) edges.push_back({length, get_edge_index(i, j)});
-          }
-        }
-#else
-        for (edge_t index = binomial_coeff(n, 2); index-- > 0;) {
-          get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
-          value_t length = dist(vertices[0], vertices[1]);
-          if (length <= threshold) edges.push_back({length, index});
-        }
-#endif
-        return edges;
-      } else { // sparse_distance_matrix
-        std::vector<diameter_simplex_t> edges;
-        for (vertex_t i = 0; i < n; ++i)
-          for (auto n : dist.neighbors[i]) {
-            vertex_t j = get_index(n);
-            if (i > j) edges.push_back({get_diameter(n), get_edge_index(i, j)});
-          }
-        return edges;
-      }
     }
 
     // Add a separate output_essential?
