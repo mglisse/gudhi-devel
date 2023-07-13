@@ -74,6 +74,22 @@ struct heap : std::priority_queue<T, V, C> {
 
 #define FIXME_STATIC static
 
+struct Params1 {
+  typedef std::size_t size_t;
+  typedef float value_t;
+  typedef int8_t dimension_t;
+  typedef int vertex_t;
+  typedef __int128 simplex_t;
+  typedef simplex_t edge_t; // TODO: could be different? not convenient...
+  typedef uint16_t coefficient_t; // Mostly for the table of multiplicative inverses
+  static const bool use_coefficients = false;
+  static const int num_coefficient_bits = 8; // TODO: remove, make it a runtime param
+
+  // Assumptions used in the code:
+  // * dimension_t smaller than vertex_t
+  // Check which ones need to be signed, and which ones could be unsigned instead
+};
+
 template<class vertex_t_>
 class union_find {
   public:
@@ -136,12 +152,21 @@ constexpr std::chrono::milliseconds time_step(40);
 #endif
 constexpr const char* clear_line="\r\033[K";
 
+/* concept DistanceMatrix
+struct DistanceMatrix {
+  typedef vertex_t;
+  typedef value_t;
+  value_t operator()(vertex_t i, vertex_t j) const;
+  vertex_t size() const;
+};
+*/
+
 enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
-template <class vertex_t_, class value_t_, compressed_matrix_layout Layout>
+template <class Params, compressed_matrix_layout Layout>
 struct compressed_distance_matrix {
-  typedef vertex_t_ vertex_t;
-  typedef value_t_ value_t;
+  typedef typename Params::vertex_t vertex_t;
+  typedef typename Params::value_t value_t;
   std::vector<value_t> distances;
   std::vector<value_t*> rows;
 
@@ -185,10 +210,10 @@ struct compressed_distance_matrix {
   }
 };
 
-template <class vertex_t_, class value_t_>
+template <class Params>
 struct sparse_distance_matrix_ {
-  typedef vertex_t_ vertex_t;
-  typedef value_t_ value_t;
+  typedef typename Params::vertex_t vertex_t;
+  typedef typename Params::value_t value_t;
   struct vertex_diameter_t {
     vertex_diameter_t() =default;
     vertex_diameter_t(vertex_t i_, value_t d_) : i(i_), d(d_) {}
@@ -260,11 +285,11 @@ struct sparse_distance_matrix_ {
   vertex_t size() const { return neighbors.size(); }
 };
 
-template <class vertex_t_, class value_t_>
+template <class Params>
 struct euclidean_distance_matrix_ {
-  typedef vertex_t_ vertex_t;
-  typedef value_t_ value_t;
-  std::vector<std::vector<value_t>> points;
+  typedef typename Params::vertex_t vertex_t;
+  typedef typename Params::value_t value_t;
+  std::vector<std::vector<value_t>> points; // should become private
 
   euclidean_distance_matrix_(std::vector<std::vector<value_t>>&& _points)
     : points(std::move(_points)) {
@@ -306,134 +331,145 @@ template <typename ValueType> class compressed_sparse_matrix_ {
   }
 };
 
-// Used as a template namespace
-template <class value_t_=float, class index_t_=int64_t, class coefficient_t_=uint16_t, int num_coefficient_bits_=8, bool use_coefficients_=false>
-struct Ripser_all {
+/* concept SimplexEncoding
+struct SimplexEncoding {
+  typedef dimension_t;
+  typedef vertex_t;
+  typedef simplex_t;
+  SimplexEncoding(vertex_t n_vertices, dimension_t max_dim_plus_one);
+  simplex_t operator()(vertex_t v, dimension_t position) const;
+  vertex_t get_max_vertex(simplex_t s, dimension_t position, vertex_t n_vertices) const;
+};
+*/
 
-  typedef std::size_t size_t;
-  typedef value_t_ value_t;
-  typedef index_t_ index_t; // TODO: split into index_vertex_t / index_simplex_t / ... (some can be 128 bits, while it makes no sense for others)
-  typedef int dimension_t;
-  typedef index_t vertex_t; // TODO: can be different
-  typedef __int128 simplex_t; // TODO: can be different
-  typedef simplex_t edge_t; // TODO: can be different, but not convenient...
-  // Assumptions used in the code: dimension_t smaller than vertex_t
-  // Check which ones need to be signed, and which ones could be unsigned instead
-  typedef coefficient_t_ coefficient_t; // Mostly for the table of multiplicative inverses
-  static constexpr int num_coefficient_bits = num_coefficient_bits_; // TODO: make it a runtime param, like bits_per_vertex?
-  static constexpr bool use_coefficients = use_coefficients_;
+template <class Params>
+class cns_encoding {
+  public:
+    typedef typename Params::dimension_t dimension_t;
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::simplex_t simplex_t;
+    static constexpr int num_coefficient_bits = Params::num_coefficient_bits; // TODO: make it a runtime param, like bits_per_vertex?
+    static constexpr bool use_coefficients = Params::use_coefficients;
+    // int used_bits = ;
+  private:
+    // Don't think about coeffs here, we'll test it in entry_t using used_bits?
+    static constexpr simplex_t max_simplex_index =
+      (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
+    static void check_overflow(simplex_t i, vertex_t n, dimension_t k) {
+      if (use_coefficients ? (i > max_simplex_index) : (i < 0)) {
+        const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
+        throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
+        // Printing max_simplex_index would cause problems when using __int128.
+      }
+    }
+    std::vector<std::vector<simplex_t>> B; // table of binomial coefficients
+
+  public:
+    cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+      for (vertex_t i = 0; i <= n; ++i) {
+        B[0][i] = 1;
+        for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
+          B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
+        if (i <= k) B[i][i] = 1;
+        check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i], n, k);
+      }
+    }
+
+    simplex_t operator()(vertex_t n, dimension_t k) const {
+      assert(n < B.size() && k < B[n].size() && n >= k - 1);
+      return B[k][n];
+    }
+
+    // We could get `n` from B and avoid passing it as argument
+    vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
+      return get_max(n, k - 1, [&](vertex_t w) -> bool { return (*this)(w, k) <= idx; });
+    }
+
+  private:
+    template <class Predicate>
+      static vertex_t get_max(vertex_t top, const vertex_t bottom, const Predicate pred) {
+        if (!pred(top)) {
+          vertex_t count = top - bottom;
+          while (count > 0) {
+            vertex_t step = count >> 1, mid = top - step;
+            if (!pred(mid)) {
+              top = mid - 1;
+              count -= step + 1;
+            } else
+              count = step;
+          }
+        }
+        return top;
+      }
+};
+
+template <class Params>
+class bitfield_encoding {
+  public:
+    typedef typename Params::dimension_t dimension_t;
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::simplex_t simplex_t;
+    static constexpr int num_coefficient_bits = Params::num_coefficient_bits; // TODO: make it a runtime param, like bits_per_vertex?
+    static constexpr bool use_coefficients = Params::use_coefficients;
+    // int used_bits = ;
+
+  private:
+    int bits_per_vertex;
+    // number of bits necessary to store x with 0 <= x < n
+    static constexpr int log2up(vertex_t n) {
+      --n;
+      int k = 0;
+      while(n>0) { n>>=1; ++k; }
+      return k;
+    }
+  public:
+    bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
+      const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
+      if (bits_per_vertex * k > available_bits)
+        throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
+      // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
+    }
+
+    simplex_t operator()(vertex_t n, dimension_t k) const {
+      if(k==0) return 1; // because of odd use in (co)boundary...
+      --k;
+      // USE_N_MINUS_K only useful if it somehow helps remove the test k==0 above
+#ifdef USE_N_MINUS_K
+      return (simplex_t)(n - k) << (bits_per_vertex * k);
+#else
+      return (simplex_t)n << (bits_per_vertex * k);
+#endif
+    }
+
+    vertex_t get_max_vertex(const simplex_t idx, dimension_t k, const vertex_t) const {
+      assert(k > 0);
+      --k;
+#ifdef USE_N_MINUS_K
+      return (idx >> (bits_per_vertex * k)) + k;
+#else
+      return (idx >> (bits_per_vertex * k));
+#endif
+    }
+};
+
+// Used as a template namespace
+template <class Params=Params1>
+struct Ripser_all {
+  typedef typename Params::size_t size_t;
+  typedef typename Params::value_t value_t;
+  typedef typename Params::dimension_t dimension_t;
+  typedef typename Params::vertex_t vertex_t;
+  typedef typename Params::simplex_t simplex_t;
+  typedef typename Params::edge_t edge_t;
+  typedef typename Params::coefficient_t coefficient_t;
+  static constexpr int num_coefficient_bits = Params::num_coefficient_bits; // TODO: make it a runtime param, like bits_per_vertex?
+  static constexpr bool use_coefficients = Params::use_coefficients;
 #if BOOST_VERSION >= 108100
   template <class Key, class T, class H, class E> using hash_map = boost::unordered_flat_map<Key, T, H, E>;
 #else
   template <class Key, class T, class H, class E> using hash_map = boost::unordered_map<Key, T, H, E>;
 #endif
   template <class Key> using hash = boost::hash<Key>;
-
-  class binomial_coeff_table {
-    public:
-      // using vertex_t = ;
-      // using simplex_t = ;
-      // using dimension_t = ;
-      // ?? using coefficient_t = ;
-      // ?? static constexpr num_coefficient_bits = ;
-      // static constexpr int used_bits = ;
-    private:
-      // Don't think about coeffs here, we'll test it in entry_t using used_bits?
-      static constexpr simplex_t max_simplex_index =
-        (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
-      static void check_overflow(simplex_t i, vertex_t n, dimension_t k) {
-        if (use_coefficients ? (i > max_simplex_index) : (i < 0)) {
-          const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
-          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
-          // Printing max_simplex_index would cause problems when using __int128.
-        }
-      }
-      std::vector<std::vector<simplex_t>> B; // table of binomial coefficients
-
-    public:
-      binomial_coeff_table(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
-        for (vertex_t i = 0; i <= n; ++i) {
-          B[0][i] = 1;
-          for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
-            B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
-          if (i <= k) B[i][i] = 1;
-          check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i], n, k);
-        }
-      }
-
-      simplex_t operator()(vertex_t n, dimension_t k) const {
-        assert(n < B.size() && k < B[n].size() && n >= k - 1);
-        return B[k][n];
-      }
-
-      vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
-        return get_max(n, k - 1, [&](vertex_t w) -> bool { return (*this)(w, k) <= idx; });
-      }
-
-    private:
-      template <class Predicate>
-        static vertex_t get_max(vertex_t top, const vertex_t bottom, const Predicate pred) {
-          if (!pred(top)) {
-            vertex_t count = top - bottom;
-            while (count > 0) {
-              vertex_t step = count >> 1, mid = top - step;
-              if (!pred(mid)) {
-                top = mid - 1;
-                count -= step + 1;
-              } else
-                count = step;
-            }
-          }
-          return top;
-        }
-  };
-
-  class bitfield_encoding {
-    public:
-      // using vertex_t = ;
-      // using simplex_t = ;
-      // using dimension_t = ;
-      // ?? using coefficient_t = ;
-      // ?? static constexpr num_coefficient_bits = ;
-
-    private:
-      int bits_per_vertex;
-      // number of bits necessary to store x with 0 <= x < n
-      static constexpr int log2up(vertex_t n) {
-        --n;
-        int k = 0;
-        while(n>0) { n>>=1; ++k; }
-        return k;
-      }
-    public:
-      bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
-        const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
-        if (bits_per_vertex * k > available_bits)
-          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
-        // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
-      }
-
-      simplex_t operator()(vertex_t n, dimension_t k) const {
-        if(k==0) return 1; // because of odd use in (co)boundary...
-        --k;
-        // USE_N_MINUS_K only useful if it somehow helps remove the test k==0 above
-#ifdef USE_N_MINUS_K
-        return (simplex_t)(n - k) << (bits_per_vertex * k);
-#else
-        return (simplex_t)n << (bits_per_vertex * k);
-#endif
-      }
-
-      vertex_t get_max_vertex(const simplex_t idx, dimension_t k, const vertex_t) const {
-        assert(k > 0);
-        --k;
-#ifdef USE_N_MINUS_K
-        return (idx >> (bits_per_vertex * k)) + k;
-#else
-        return (idx >> (bits_per_vertex * k));
-#endif
-      }
-  };
 
   struct entry_with_coeff_t {
     simplex_t index : 8 * sizeof(simplex_t) - num_coefficient_bits;
@@ -516,12 +552,12 @@ struct Ripser_all {
     }
   };
 
-  typedef compressed_distance_matrix<vertex_t, value_t, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
-  typedef compressed_distance_matrix<vertex_t, value_t, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
-  typedef sparse_distance_matrix_<vertex_t, value_t> sparse_distance_matrix;
-  typedef euclidean_distance_matrix_<vertex_t, value_t> euclidean_distance_matrix;
+  typedef compressed_distance_matrix<Params, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
+  typedef compressed_distance_matrix<Params, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
+  typedef sparse_distance_matrix_<Params> sparse_distance_matrix;
+  typedef euclidean_distance_matrix_<Params> euclidean_distance_matrix;
 
-  template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding> class ripser {
+  template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<Params>> class ripser {
     // ???
     // typedef typename DistanceMatrix::value_t value_t;
     // typedef ...
@@ -905,30 +941,30 @@ continue_outer:;
     }
 
     template<class OutPair>
-    void compute_dim_0_pairs(std::vector<diameter_simplex_t>& edges,
-        std::vector<diameter_simplex_t>& columns_to_reduce, OutPair& output_pair) {
-      union_find<vertex_t> dset(n);
+      void compute_dim_0_pairs(std::vector<diameter_simplex_t>& edges,
+          std::vector<diameter_simplex_t>& columns_to_reduce, OutPair& output_pair) {
+        union_find<vertex_t> dset(n);
 
-      edges = get_edges();
-      std::sort(edges.rbegin(), edges.rend(),
-          greater_diameter_or_smaller_index<diameter_simplex_t>());
-      std::vector<vertex_t> vertices_of_edge(2);
-      for (auto e : edges) {
-        get_simplex_vertices(get_index(e), 1, n, vertices_of_edge.rbegin());
-        vertex_t u = dset.find(vertices_of_edge[0]), v = dset.find(vertices_of_edge[1]);
+        edges = get_edges();
+        std::sort(edges.rbegin(), edges.rend(),
+            greater_diameter_or_smaller_index<diameter_simplex_t>());
+        std::vector<vertex_t> vertices_of_edge(2);
+        for (auto e : edges) {
+          get_simplex_vertices(get_index(e), 1, n, vertices_of_edge.rbegin());
+          vertex_t u = dset.find(vertices_of_edge[0]), v = dset.find(vertices_of_edge[1]);
 
-        if (u != v) {
-          if (get_diameter(e) != 0)
-            output_pair(0, get_diameter(e));
-          dset.link(u, v);
-        } else if ((dim_max > 0) && (get_index(get_zero_apparent_cofacet(e, 1)) == -1))
-          columns_to_reduce.push_back(e);
+          if (u != v) {
+            if (get_diameter(e) != 0)
+              output_pair(0, get_diameter(e));
+            dset.link(u, v);
+          } else if ((dim_max > 0) && (get_index(get_zero_apparent_cofacet(e, 1)) == -1))
+            columns_to_reduce.push_back(e);
+        }
+        if (dim_max > 0) std::reverse(columns_to_reduce.begin(), columns_to_reduce.end());
+
+        for (vertex_t i = 0; i < n; ++i)
+          if (dset.find(i) == i) output_pair(0, std::numeric_limits<value_t>::infinity());
       }
-      if (dim_max > 0) std::reverse(columns_to_reduce.begin(), columns_to_reduce.end());
-
-      for (vertex_t i = 0; i < n; ++i)
-        if (dset.find(i) == i) output_pair(0, std::numeric_limits<value_t>::infinity());
-    }
 
     template <typename Column> diameter_entry_t pop_pivot(Column& column) {
       diameter_entry_t pivot(-1);
@@ -1017,105 +1053,105 @@ continue_outer:;
       }
 
     template<class OutPair>
-    void compute_pairs(const std::vector<diameter_simplex_t>& columns_to_reduce,
-        entry_hash_map& pivot_column_index, const dimension_t dim, OutPair& output_pair) {
-      compressed_sparse_matrix reduction_matrix;
-      heap<diameter_entry_t, std::vector<diameter_entry_t>,
-        greater_diameter_or_smaller_index<diameter_entry_t>>
-          working_reduction_column, working_coboundary;
+      void compute_pairs(const std::vector<diameter_simplex_t>& columns_to_reduce,
+          entry_hash_map& pivot_column_index, const dimension_t dim, OutPair& output_pair) {
+        compressed_sparse_matrix reduction_matrix;
+        heap<diameter_entry_t, std::vector<diameter_entry_t>,
+          greater_diameter_or_smaller_index<diameter_entry_t>>
+            working_reduction_column, working_coboundary;
 
 #ifdef INDICATE_PROGRESS
-      std::chrono::steady_clock::time_point next = std::chrono::steady_clock::now() + time_step;
+        std::chrono::steady_clock::time_point next = std::chrono::steady_clock::now() + time_step;
 #endif
-      for (size_t index_column_to_reduce = 0; index_column_to_reduce < columns_to_reduce.size();
-          ++index_column_to_reduce) {
+        for (size_t index_column_to_reduce = 0; index_column_to_reduce < columns_to_reduce.size();
+            ++index_column_to_reduce) {
 
-        diameter_entry_t column_to_reduce(columns_to_reduce[index_column_to_reduce], 1);
-        value_t diameter = get_diameter(column_to_reduce);
+          diameter_entry_t column_to_reduce(columns_to_reduce[index_column_to_reduce], 1);
+          value_t diameter = get_diameter(column_to_reduce);
 
-        reduction_matrix.append_column();
+          reduction_matrix.append_column();
 
-        working_reduction_column.clear(); working_coboundary.clear();
+          working_reduction_column.clear(); working_coboundary.clear();
 
-        diameter_entry_t e, pivot = init_coboundary_and_get_pivot(
-            column_to_reduce, working_coboundary, dim, pivot_column_index);
-        // When we found an emergent pair, we could avoid checking again below, but it does not seem to gain anything in practice.
+          diameter_entry_t e, pivot = init_coboundary_and_get_pivot(
+              column_to_reduce, working_coboundary, dim, pivot_column_index);
+          // When we found an emergent pair, we could avoid checking again below, but it does not seem to gain anything in practice.
 
-        while (true) {
+          while (true) {
 #ifdef INDICATE_PROGRESS
-          if (std::chrono::steady_clock::now() > next) {
-            std::cerr << clear_line << "reducing column " << index_column_to_reduce + 1
-              << "/" << columns_to_reduce.size() << " (diameter " << diameter << ")"
-              << std::flush;
-            next = std::chrono::steady_clock::now() + time_step;
-          }
+            if (std::chrono::steady_clock::now() > next) {
+              std::cerr << clear_line << "reducing column " << index_column_to_reduce + 1
+                << "/" << columns_to_reduce.size() << " (diameter " << diameter << ")"
+                << std::flush;
+              next = std::chrono::steady_clock::now() + time_step;
+            }
 #endif
-          if (get_index(pivot) != -1) {
-            auto pair = pivot_column_index.find(get_entry(pivot));
-            if (pair != pivot_column_index.end()) {
-              entry_t other_pivot = pair->first;
-              size_t index_column_to_add = pair->second;
-              coefficient_t factor =
-                modulus - get_coefficient(pivot) *
-                multiplicative_inverse[get_coefficient(other_pivot)] %
-                modulus;
+            if (get_index(pivot) != -1) {
+              auto pair = pivot_column_index.find(get_entry(pivot));
+              if (pair != pivot_column_index.end()) {
+                entry_t other_pivot = pair->first;
+                size_t index_column_to_add = pair->second;
+                coefficient_t factor =
+                  modulus - get_coefficient(pivot) *
+                  multiplicative_inverse[get_coefficient(other_pivot)] %
+                  modulus;
 
-              // It saves a little bit (3% on an example, 0% on another) if we pass pivot to add_coboundary and avoid pushing entries smaller than pivot in working_coboundary
-              add_coboundary(reduction_matrix, columns_to_reduce, index_column_to_add,
-                  factor, dim, working_reduction_column, working_coboundary);
+                // It saves a little bit (3% on an example, 0% on another) if we pass pivot to add_coboundary and avoid pushing entries smaller than pivot in working_coboundary
+                add_coboundary(reduction_matrix, columns_to_reduce, index_column_to_add,
+                    factor, dim, working_reduction_column, working_coboundary);
 
-              pivot = get_pivot(working_coboundary);
-            } else if (get_index(e = get_zero_apparent_facet(pivot, dim + 1)) != -1) {
-              set_coefficient(e, modulus - get_coefficient(e));
+                pivot = get_pivot(working_coboundary);
+              } else if (get_index(e = get_zero_apparent_facet(pivot, dim + 1)) != -1) {
+                set_coefficient(e, modulus - get_coefficient(e));
 
-              add_simplex_coboundary(e, dim, working_reduction_column, working_coboundary);
+                add_simplex_coboundary(e, dim, working_reduction_column, working_coboundary);
 
-              pivot = get_pivot(working_coboundary);
-            } else {
-              value_t death = get_diameter(pivot);
-              output_pair(diameter, death);
-              pivot_column_index.insert({get_entry(pivot), index_column_to_reduce});
-              // CubicalRipser suggests caching the column here, at least if it took many operations to reduce it.
+                pivot = get_pivot(working_coboundary);
+              } else {
+                value_t death = get_diameter(pivot);
+                output_pair(diameter, death);
+                pivot_column_index.insert({get_entry(pivot), index_column_to_reduce});
+                // CubicalRipser suggests caching the column here, at least if it took many operations to reduce it.
 
-              while (true) {
-                diameter_entry_t e = pop_pivot(working_reduction_column);
-                if (get_index(e) == -1) break;
-                assert(get_coefficient(e) > 0);
-                reduction_matrix.push_back(e);
+                while (true) {
+                  diameter_entry_t e = pop_pivot(working_reduction_column);
+                  if (get_index(e) == -1) break;
+                  assert(get_coefficient(e) > 0);
+                  reduction_matrix.push_back(e);
+                }
+                break;
               }
+            } else {
+              output_pair(diameter, std::numeric_limits<value_t>::infinity());
               break;
             }
-          } else {
-            output_pair(diameter, std::numeric_limits<value_t>::infinity());
-            break;
           }
         }
-      }
 #ifdef INDICATE_PROGRESS
-      std::cerr << clear_line << std::flush;
+        std::cerr << clear_line << std::flush;
 #endif
-    }
+      }
 
     // Add a separate output_essential?
     template<class OutDim, class OutPair>
-    void compute_barcodes(OutDim&& output_dim, OutPair&& output_pair) {
-      std::vector<diameter_simplex_t> simplices, columns_to_reduce;
+      void compute_barcodes(OutDim&& output_dim, OutPair&& output_pair) {
+        std::vector<diameter_simplex_t> simplices, columns_to_reduce;
 
-      output_dim(0);
-      compute_dim_0_pairs(simplices, columns_to_reduce, output_pair);
+        output_dim(0);
+        compute_dim_0_pairs(simplices, columns_to_reduce, output_pair);
 
-      for (dimension_t dim = 1; dim <= dim_max; ++dim) {
-        entry_hash_map pivot_column_index;
-        pivot_column_index.reserve(columns_to_reduce.size());
+        for (dimension_t dim = 1; dim <= dim_max; ++dim) {
+          entry_hash_map pivot_column_index;
+          pivot_column_index.reserve(columns_to_reduce.size());
 
-        output_dim(dim);
-        compute_pairs(columns_to_reduce, pivot_column_index, dim, output_pair);
+          output_dim(dim);
+          compute_pairs(columns_to_reduce, pivot_column_index, dim, output_pair);
 
-        if (dim < dim_max)
-          assemble_columns_to_reduce(simplices, columns_to_reduce, pivot_column_index,
-              dim + 1);
+          if (dim < dim_max)
+            assemble_columns_to_reduce(simplices, columns_to_reduce, pivot_column_index,
+                dim + 1);
+        }
       }
-    }
   };
 
   enum file_format {
