@@ -318,6 +318,7 @@ struct Ripser_all {
   typedef __int128 simplex_t; // TODO: can be different
   typedef simplex_t edge_t; // TODO: can be different, but not convenient...
   // Assumptions used in the code: dimension_t smaller than vertex_t
+  // Check which ones need to be signed, and which ones could be unsigned instead
   typedef coefficient_t_ coefficient_t;
   static constexpr int num_coefficient_bits = num_coefficient_bits_;
   static constexpr bool use_coefficients = use_coefficients_;

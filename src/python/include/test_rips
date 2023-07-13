@@ -1,0 +1,11 @@
+#!/usr/bin/zsh
+set -e
+g++ ripser.cc -O2 -DNDEBUG -Wall -g `boost-includes` 
+# push
+time ./a.out --format point-cloud ~/repos/ripser/examples/o3_1024.txt >! /tmp/new1
+# pop
+time ./a.out --format point-cloud ~/repos/ripser/examples/o3_4096.txt --threshold 1.6 >! /tmp/new2
+# apparent_pair (get_simplex_vertices + dist) - edge_collapse would help
+time ./a.out --format point-cloud --dim 2 --threshold .7 tore >! /tmp/new3
+# apparent_pair (get_simplex_vertices) - no edge collapse possible
+time ./a.out --format point-cloud circle24 --dim 25 >! /tmp/new4

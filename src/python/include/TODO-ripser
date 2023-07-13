@@ -1,0 +1,43 @@
+ripser<Complex>
+concept Complex {
+  using value_t=
+  using vertex_t=
+  using simplex_t=
+  using dimension_t=
+  using coefficient_t= (handled as data)
+  const int num_coef_bits
+  n_vertices()
+  get_edges() -> vector<diameter_simplex> qu'on va trier
+  boundary()    | range, lazy
+  coboundary()  |
+}
+
+---
+
+complex<DistanceMatrix,SimplexEncoding>
+  // takes existing distmat, but creates simpenc itself
+
+concept DistanceMatrix {
+  using value_t=
+  using vertex_t=
+  // different way to initialize it for each model
+  n_vertices() ?
+  const bool is_sparse ?
+  operator()(vertex1, vertex2)
+  neighbors(vertex) -> range<vertex_diameter>
+}
+
+// englober CNS et bitfield, mais probablement pas plus
+// suppose que le codage d'un simplexe est la somme des codages de (vert,pos)
+concept SimplexEncoding {
+  using vertex_t=
+  using simplex_t=
+  ? using dimension_t= (for position)
+  ? using coefficient_t= (handled as data)
+  const int num_coef_bits
+  constructor(n_vertices, max_dim)
+  encode(vertex, position) -> simplex
+  get_max_vertex(simplex, position) -> vertex (forme faible de decode() qui ne marche que sur le dernier)
+}
+
+¿¿ où gère-t-on entry_t (i.e. simplex_t + coefficient_t) ??
