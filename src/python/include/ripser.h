@@ -336,7 +336,9 @@ struct Ripser_all {
       // using dimension_t = ;
       // ?? using coefficient_t = ;
       // ?? static constexpr num_coefficient_bits = ;
+      // static constexpr int used_bits = ;
     private:
+      // Don't think about coeffs here, we'll test it in entry_t using used_bits?
       static constexpr simplex_t max_simplex_index =
         (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
       static void check_overflow(simplex_t i, vertex_t n, dimension_t k) {
