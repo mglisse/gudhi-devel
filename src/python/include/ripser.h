@@ -319,8 +319,8 @@ struct Ripser_all {
   typedef simplex_t edge_t; // TODO: can be different, but not convenient...
   // Assumptions used in the code: dimension_t smaller than vertex_t
   // Check which ones need to be signed, and which ones could be unsigned instead
-  typedef coefficient_t_ coefficient_t;
-  static constexpr int num_coefficient_bits = num_coefficient_bits_;
+  typedef coefficient_t_ coefficient_t; // Mostly for the table of multiplicative inverses
+  static constexpr int num_coefficient_bits = num_coefficient_bits_; // TODO: make it a runtime param, like bits_per_vertex?
   static constexpr bool use_coefficients = use_coefficients_;
 #if BOOST_VERSION >= 108100
   template <class Key, class T, class H, class E> using hash_map = boost::unordered_flat_map<Key, T, H, E>;
