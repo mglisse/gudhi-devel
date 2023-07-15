@@ -79,7 +79,7 @@ struct Params1 {
   typedef float value_t;
   typedef int8_t dimension_t;
   typedef int vertex_t;
-  typedef __int128 simplex_t;
+  typedef unsigned __int128 simplex_t; // FIXME: comparison with -1 warns
   typedef simplex_t edge_t; // TODO: could be different? not convenient...
   typedef uint16_t coefficient_t; // Mostly for the table of multiplicative inverses
   static const bool use_coefficients = false;
@@ -364,6 +364,7 @@ class cns_encoding {
 
   public:
     cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+      const int available_bits = std::numeric_limits<simplex_t>::digits;
       simplex_t max_simplex_index = 0;
       for (vertex_t i = 0; i <= n; ++i) {
         B[0][i] = 1;
@@ -373,11 +374,12 @@ class cns_encoding {
         vertex_t mi = std::min<vertex_t>(i >> 1, (vertex_t)k); // max
         max_simplex_index = B[mi][i];
         if (max_simplex_index < B[mi][i-1]) { // overflow
-          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(8 * sizeof(simplex_t)) + "bits");
+          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
         }
-        //check_overflow(B[mi][i], n, k);
       }
-      extra_bits = 8 * sizeof(simplex_t) - log2up(max_simplex_index);
+      extra_bits = available_bits - log2up(max_simplex_index);
+      // FIXME: we need to ensure that the value -1 (up to the extra bits) is not used for a real simplex, since it is used as a dummy elsewhere.
+      // just test max_simplex_index != -1 here? Note that only the case without coeff can be problematic.
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
@@ -428,6 +430,7 @@ class bitfield_encoding {
       if (extra_bits < 0)
         throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
       // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
+      // The dummy value -1 cannot appear for a simplex, since its vertices would all be equal.
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
