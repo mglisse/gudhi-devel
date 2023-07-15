@@ -342,37 +342,42 @@ struct SimplexEncoding {
 };
 */
 
+// number of bits necessary to store x with 0 <= x < n
+template <class vertex_t>
+constexpr int log2up(vertex_t n) {
+  --n;
+  int k = 0;
+  while(n>0) { n>>=1; ++k; }
+  return k;
+}
+
 template <class Params>
 class cns_encoding {
   public:
     typedef typename Params::dimension_t dimension_t;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::simplex_t simplex_t;
-    static constexpr int num_coefficient_bits = Params::num_coefficient_bits; // TODO: make it a runtime param, like bits_per_vertex?
-    static constexpr bool use_coefficients = Params::use_coefficients;
-    // int used_bits = ;
+
   private:
-    // Don't think about coeffs here, we'll test it in entry_t using used_bits?
-    static constexpr simplex_t max_simplex_index =
-      (simplex_t(1) << (8 * sizeof(simplex_t) - 1 - num_coefficient_bits)) - 1;
-    static void check_overflow(simplex_t i, vertex_t n, dimension_t k) {
-      if (use_coefficients ? (i > max_simplex_index) : (i < 0)) {
-        const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
-        throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
-        // Printing max_simplex_index would cause problems when using __int128.
-      }
-    }
     std::vector<std::vector<simplex_t>> B; // table of binomial coefficients
+    int extra_bits;
 
   public:
     cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+      simplex_t max_simplex_index = 0;
       for (vertex_t i = 0; i <= n; ++i) {
         B[0][i] = 1;
         for (dimension_t j = 1; (vertex_t)j < std::min<vertex_t>(i, k + 1); ++j)
           B[j][i] = B[j - 1][i - 1] + B[j][i - 1];
         if (i <= k) B[i][i] = 1;
-        check_overflow(B[std::min<vertex_t>(i >> 1, (vertex_t)k)][i], n, k);
+        vertex_t mi = std::min<vertex_t>(i >> 1, (vertex_t)k); // max
+        max_simplex_index = B[mi][i];
+        if (max_simplex_index < B[mi][i-1]) { // overflow
+          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(8 * sizeof(simplex_t)) + "bits");
+        }
+        //check_overflow(B[mi][i], n, k);
       }
+      extra_bits = 8 * sizeof(simplex_t) - log2up(max_simplex_index);
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
@@ -384,6 +389,8 @@ class cns_encoding {
     vertex_t get_max_vertex(const simplex_t idx, const dimension_t k, const vertex_t n) const {
       return get_max(n, k - 1, [&](vertex_t w) -> bool { return (*this)(w, k) <= idx; });
     }
+
+    int num_extra_bits() const { return extra_bits; }
 
   private:
     template <class Predicate>
@@ -409,23 +416,16 @@ class bitfield_encoding {
     typedef typename Params::dimension_t dimension_t;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::simplex_t simplex_t;
-    static constexpr int num_coefficient_bits = Params::num_coefficient_bits; // TODO: make it a runtime param, like bits_per_vertex?
-    static constexpr bool use_coefficients = Params::use_coefficients;
-    // int used_bits = ;
 
   private:
     int bits_per_vertex;
-    // number of bits necessary to store x with 0 <= x < n
-    static constexpr int log2up(vertex_t n) {
-      --n;
-      int k = 0;
-      while(n>0) { n>>=1; ++k; }
-      return k;
-    }
+    int extra_bits;
+
   public:
     bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
-      const int available_bits = std::numeric_limits<simplex_t>::digits - (use_coefficients ? num_coefficient_bits : 0);
-      if (bits_per_vertex * k > available_bits)
+      const int available_bits = std::numeric_limits<simplex_t>::digits;
+      extra_bits = available_bits - bits_per_vertex * k;
+      if (extra_bits < 0)
         throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
       // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
     }
@@ -450,6 +450,8 @@ class bitfield_encoding {
       return (idx >> (bits_per_vertex * k));
 #endif
     }
+
+    int num_extra_bits() const { return extra_bits; }
 };
 
 // Used as a template namespace
@@ -590,7 +592,11 @@ struct Ripser_all {
       : dist(std::move(_dist)), n(dist.size()),
       dim_max(std::min<vertex_t>(_dim_max, dist.size() - 2)), threshold(_threshold),
       modulus(_modulus), simplex_encoding(n, dim_max + 2),
-      multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {}
+      multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {
+        if (simplex_encoding.num_extra_bits() < log2up(modulus - 1)) // TODO: -2, storing coeff-1
+          throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
+          // TODO: include relevant numbers in the message
+      }
 
     // TODO: split out all the code about CNS, so we can easily plug something else
     edge_t get_edge_index(const vertex_t i, const vertex_t j) const {
@@ -693,6 +699,7 @@ struct Ripser_all {
       }
 
       diameter_entry_t next() {
+        // this requires simplex_encoding(x,0)>0
         while (simplex_encoding(j, k) <= idx_below) {
           idx_below -= simplex_encoding(j, k);
           idx_above += simplex_encoding(j, k + 1);
