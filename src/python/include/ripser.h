@@ -978,14 +978,10 @@ continue_outer:;
       }
 
     template <typename Column> std::optional<diameter_entry_t> pop_pivot(Column& column) {
-      diameter_entry_t pivot(-1); // TODO: we don't need -1
-      while(true) {
-        // At this stage the partial sum is 0
-        if (column.empty()) return std::nullopt;
-        pivot = column.top();
+      while(!column.empty()) { // At this stage the partial sum is 0
+        diameter_entry_t pivot = column.top();
         column.pop();
-        while(true) {
-          // At this stage the partial sum is led by pivot
+        while(true) { // At this stage the partial sum is led by pivot
           if (column.empty() || get_index(column.top()) != get_index(pivot)) return pivot;
           coefficient_t sum = (get_coefficient(pivot) + get_coefficient(column.top())) % modulus;
           column.pop();
@@ -995,6 +991,7 @@ continue_outer:;
           set_coefficient(pivot, sum);
         }
       }
+      return std::nullopt;
     }
 
     template <typename Column> diameter_entry_t get_pivot(Column& column) {
