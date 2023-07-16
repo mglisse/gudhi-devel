@@ -677,14 +677,6 @@ struct Ripser_all {
       const ripser& parent; // for n and get_simplex_vertices
 
       public:
-      Simplex_coboundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
-          const ripser& _parent)
-        : modulus(_parent.modulus), dist(_parent.dist),
-        simplex_encoding(_parent.simplex_encoding), parent(_parent) {
-          parent.get_simplex_vertices(get_index(_simplex), _dim, parent.n, vertices.rbegin());
-          // ?? check if this is useful / right
-        }
-
       Simplex_coboundary_enumerator(const ripser& _parent) : modulus(_parent.modulus), dist(_parent.dist),
       simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
@@ -736,13 +728,6 @@ struct Ripser_all {
       const ripser& parent; // for n and get_simplex_vertices
 
       public:
-      Simplex_coboundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
-          const ripser& _parent)
-        : modulus(_parent.modulus), dist(_parent.dist),
-        simplex_encoding(_parent.simplex_encoding), parent(_parent) {
-          set_simplex(_simplex, _dim);
-        }
-
       Simplex_coboundary_enumerator(const ripser& _parent)
         : modulus(_parent.modulus), dist(_parent.dist),
         simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
@@ -812,14 +797,8 @@ continue_outer:;
         const ripser& parent; // for n, get_max_vertex, compute_diameter
 
       public:
-        simplex_boundary_enumerator(const diameter_entry_t _simplex, const dimension_t _dim,
-            const ripser& _parent)
-          : idx_below(get_index(_simplex)), idx_above(0), j(_parent.n - 1), k(_dim),
-          simplex(_simplex), modulus(_parent.modulus), simplex_encoding(_parent.simplex_encoding),
-          parent(_parent) {}
-
         simplex_boundary_enumerator(const dimension_t _dim, const ripser& _parent)
-          : simplex_boundary_enumerator(-1, _dim, _parent) {} // TODO: don't use -1
+          : modulus(_parent.modulus), simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
         void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
           idx_below = get_index(_simplex);
