@@ -194,6 +194,7 @@ struct compressed_distance_matrix {
       return rows[i][j];
   }
   vertex_t size() const { return rows.size(); }
+  private:
   void init_rows() {
     if constexpr (Layout == LOWER_TRIANGULAR) {
       value_t* pointer = &distances[0];
@@ -273,6 +274,7 @@ struct sparse_distance_matrix_ {
       : std::numeric_limits<value_t>::infinity();
 #endif
   }
+  private:
   void init() {
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
     for(vertex_t i=0; i<size(); ++i){
@@ -282,7 +284,7 @@ struct sparse_distance_matrix_ {
     }
 #endif
   }
-
+  public:
   vertex_t size() const { return neighbors.size(); }
 };
 
@@ -680,11 +682,11 @@ struct Ripser_all {
       void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
         idx_below = get_index(_simplex);
         idx_above = 0;
-        j = parent.n - 1;
+        j = dist.size() - 1;
         k = _dim + 1;
         simplex = _simplex;
         vertices.resize(_dim + 1);
-        parent.get_simplex_vertices(get_index(_simplex), _dim, parent.n, vertices.rbegin());
+        parent.get_simplex_vertices(get_index(_simplex), _dim, dist.size(), vertices.rbegin());
       }
 
       bool has_next(bool all_cofacets = true) {
@@ -735,7 +737,7 @@ struct Ripser_all {
         k = _dim + 1;
         simplex = _simplex;
         vertices.resize(_dim + 1);
-        parent.get_simplex_vertices(idx_below, _dim, parent.n, vertices.rbegin());
+        parent.get_simplex_vertices(idx_below, _dim, dist.size(), vertices.rbegin());
 
         neighbor_it.resize(_dim + 1);
         neighbor_end.resize(_dim + 1);
