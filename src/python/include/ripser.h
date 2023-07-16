@@ -51,6 +51,7 @@
 #include <iostream>
 #include <numeric>
 #include <queue>
+#include <optional>
 #include <sstream>
 
 #include <boost/range/iterator_range_core.hpp>
@@ -976,35 +977,30 @@ continue_outer:;
           if (dset.find(i) == i) output_pair(0, std::numeric_limits<value_t>::infinity());
       }
 
-    template <typename Column> diameter_entry_t pop_pivot(Column& column) {
-      diameter_entry_t pivot(-1);
-      if constexpr(use_coefficients) {
-        while (!column.empty()) {
-          if (get_coefficient(pivot) == 0)
-            pivot = column.top();
-          else if (get_index(column.top()) != get_index(pivot))
-            return pivot;
-          else
-            set_coefficient(pivot,
-                (get_coefficient(pivot) + get_coefficient(column.top())) % modulus);
-          column.pop();
-        }
-        return (get_coefficient(pivot) == 0) ? -1 : pivot;
-      } else {
-        while (!column.empty()) {
-          pivot = column.top();
-          column.pop();
+    template <typename Column> std::optional<diameter_entry_t> pop_pivot(Column& column) {
+      diameter_entry_t pivot(-1); // TODO: we don't need -1
+      while(true) {
+        // At this stage the partial sum is 0
+        if (column.empty()) return std::nullopt;
+        pivot = column.top();
+        column.pop();
+        while(true) {
+          // At this stage the partial sum is led by pivot
           if (column.empty() || get_index(column.top()) != get_index(pivot)) return pivot;
+          coefficient_t sum = (get_coefficient(pivot) + get_coefficient(column.top())) % modulus;
           column.pop();
+          if (sum == 0) {
+            break;
+          }
+          set_coefficient(pivot, sum);
         }
-        return -1;
       }
     }
 
     template <typename Column> diameter_entry_t get_pivot(Column& column) {
-      diameter_entry_t result = pop_pivot(column);
-      if (get_index(result) != -1) column.push(result);
-      return result;
+      std::optional<diameter_entry_t> result = pop_pivot(column);
+      if (result) column.push(*result);
+      return result?*result:-1;
     }
 
     // Either return the pivot in an emergent pair, or fill working_coboundary with the full coboundary (and return its pivot)
@@ -1124,10 +1120,10 @@ continue_outer:;
                 // CubicalRipser suggests caching the column here, at least if it took many operations to reduce it.
 
                 while (true) {
-                  diameter_entry_t e = pop_pivot(working_reduction_column);
-                  if (get_index(e) == -1) break;
-                  assert(get_coefficient(e) > 0);
-                  reduction_matrix.push_back(e);
+                  std::optional<diameter_entry_t> e = pop_pivot(working_reduction_column);
+                  if (!e) break;
+                  assert(get_coefficient(*e) > 0);
+                  reduction_matrix.push_back(*e);
                 }
                 break;
               }
