@@ -79,7 +79,7 @@ struct Params1 {
   typedef float value_t;
   typedef int8_t dimension_t;
   typedef int vertex_t;
-  typedef unsigned __int128 simplex_t; // FIXME: comparison with -1 warns
+  typedef __int128 simplex_t; // FIXME: we want unsigned, but then comparison with -1 rightfully warns and fails with coefficients
   typedef simplex_t edge_t; // TODO: could be different? not convenient...
   typedef uint16_t coefficient_t; // Mostly for the table of multiplicative inverses
   static const bool use_coefficients = false;
@@ -680,7 +680,7 @@ struct Ripser_all {
           const ripser& _parent)
         : modulus(_parent.modulus), dist(_parent.dist),
         simplex_encoding(_parent.simplex_encoding), parent(_parent) {
-          if (get_index(_simplex) != -1)
+          if (get_index(_simplex) != -1) // can that happen?
             parent.get_simplex_vertices(get_index(_simplex), _dim, parent.n, vertices.rbegin());
         }
 
