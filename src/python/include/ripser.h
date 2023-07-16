@@ -80,7 +80,7 @@ struct Params1 {
   typedef float value_t;
   typedef int8_t dimension_t;
   typedef int vertex_t;
-  typedef __int128 simplex_t; // FIXME: we want unsigned, but then comparison with -1 rightfully warns and fails with coefficients
+  typedef unsigned __int128 simplex_t;
   typedef simplex_t edge_t; // TODO: could be different? not convenient...
   typedef uint16_t coefficient_t; // Mostly for the table of multiplicative inverses
   static const bool use_coefficients = false;
@@ -379,8 +379,6 @@ class cns_encoding {
         }
       }
       extra_bits = available_bits - log2up(max_simplex_index);
-      // FIXME: we need to ensure that the value -1 (up to the extra bits) is not used for a real simplex, since it is used as a dummy elsewhere.
-      // just test max_simplex_index != -1 here? Note that only the case without coeff can be problematic.
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
@@ -431,7 +429,6 @@ class bitfield_encoding {
       if (extra_bits < 0)
         throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k - 1) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
       // The message is a bit misleading, it is tuples that we cannot encode, and just with this representation.
-      // The dummy value -1 cannot appear for a simplex, since its vertices would all be equal.
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
