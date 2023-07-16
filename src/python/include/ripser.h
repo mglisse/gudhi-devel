@@ -173,7 +173,7 @@ struct compressed_distance_matrix {
 
   compressed_distance_matrix(std::vector<value_t>&& _distances)
     : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
-      assert(distances.size() == size() * (size() - 1) / 2);
+      assert(distances.size() == (size_t)size() * (size() - 1) / 2);
       init_rows();
     }
 
@@ -298,8 +298,8 @@ struct euclidean_distance_matrix_ {
     }
 
   value_t operator()(const vertex_t i, const vertex_t j) const {
-    assert(i < points.size());
-    assert(j < points.size());
+    assert((size_t)i < points.size());
+    assert((size_t)j < points.size());
     return std::sqrt(std::inner_product(
           points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
           [](value_t u, value_t v) { return (u - v) * (u - v); }));
@@ -374,8 +374,8 @@ class cns_encoding {
         if (i <= k) B[i][i] = 1;
         vertex_t mi = std::min<vertex_t>(i >> 1, (vertex_t)k); // max
         max_simplex_index = B[mi][i];
-        if (max_simplex_index < B[mi][i-1]) { // overflow
-          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + "vertices using only " + std::to_string(available_bits) + "bits");
+        if (i > 1 && max_simplex_index < B[mi][i-1]) { // overflow
+          throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
         }
       }
       extra_bits = available_bits - log2up(max_simplex_index);
@@ -384,7 +384,7 @@ class cns_encoding {
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
-      assert(n < B.size() && k < B[n].size() && n >= k - 1);
+      assert(n >= k - 1);
       return B[k][n];
     }
 
