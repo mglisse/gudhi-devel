@@ -9,3 +9,5 @@ time ./a.out --format point-cloud ~/repos/ripser/examples/o3_4096.txt --threshol
 time ./a.out --format point-cloud --dim 2 --threshold .7 tore >! /tmp/new3
 # apparent_pair (get_simplex_vertices) - no edge collapse possible
 time ./a.out --format point-cloud circle24 --dim 25 >! /tmp/new4
+
+# for i in new*; do mv $i old${i#new}; done

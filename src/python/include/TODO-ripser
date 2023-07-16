@@ -38,6 +38,11 @@ concept SimplexEncoding {
   constructor(n_vertices, max_dim)
   encode(vertex, position) -> simplex
   get_max_vertex(simplex, position) -> vertex (forme faible de decode() qui ne marche que sur le dernier)
+  dummy_simplex() / none() // ou utiliser optional à plein d'endroits
 }
 
 ¿¿ où gère-t-on entry_t (i.e. simplex_t + coefficient_t) ??
+class ChainEncoding<SimplexEncoding> {
+  using entry_t=
+}
+ou FiltrationEncoding avec aussi diameter_{simplex,entry} ?
