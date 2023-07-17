@@ -1,3 +1,9 @@
+Problems:
+threshold utilisé à trop d'endroits, mais changer has_next+next pour le prendre en compte est du boulot. fusioner les 2 en un next_raw qui renvoie optional?
+num_bits_coef runtime
+
+====
+
 ripser<Complex>
 concept Complex {
   using value_t=
