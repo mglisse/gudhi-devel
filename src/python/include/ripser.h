@@ -877,6 +877,9 @@ template <typename Filtration> class ripser {
   const std::vector<coefficient_storage_t> multiplicative_inverse_;
   mutable std::vector<diameter_entry_t> cofacet_entries;
   mutable std::vector<vertex_t> vertices;
+  simplex_boundary_enumerator facets;
+  // Creating a new one in each function that needs it wastes a bit of time, but we may need 2 at the same time.
+  simplex_coboundary_enumerator cofacets1, cofacets2;
 
   coefficient_t multiplicative_inverse(coefficient_t c) const {
     return multiplicative_inverse_[c];
@@ -886,7 +889,9 @@ template <typename Filtration> class ripser {
     : filt(std::move(_filt)), n(filt.num_vertices()),
     dim_max(std::min<vertex_t>(_dim_max, n - 2)),
     modulus(_modulus),
-    multiplicative_inverse_(multiplicative_inverse_vector<coefficient_storage_t>(_modulus)) {
+    multiplicative_inverse_(multiplicative_inverse_vector<coefficient_storage_t>(_modulus)),
+    facets(filt), cofacets1(filt), cofacets2(filt)
+  {
       if (filt.num_bits_for_coeff() < log2up(modulus-1)) // the logic for log2up(modulus-1) appears in 3 different places :-(
         throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
         // TODO: include relevant numbers in the message
@@ -896,8 +901,6 @@ template <typename Filtration> class ripser {
 
 
   std::optional<diameter_entry_t> get_zero_pivot_facet(const diameter_entry_t simplex, const dimension_t dim) {
-    // FIXME: static !!!
-    FIXME_STATIC simplex_boundary_enumerator facets(filt);
     facets.set_simplex(simplex, dim);
     while(true) { // stupid C++
       std::optional<diameter_entry_t> facet = facets.next();
@@ -908,10 +911,9 @@ template <typename Filtration> class ripser {
   }
 
   std::optional<diameter_entry_t> get_zero_pivot_cofacet(const diameter_entry_t simplex, const dimension_t dim) {
-    FIXME_STATIC simplex_coboundary_enumerator cofacets(filt);
-    cofacets.set_simplex(simplex, dim);
+    cofacets1.set_simplex(simplex, dim);
     while(true) { // stupid C++
-      std::optional<diameter_entry_t> cofacet = cofacets.next_raw();
+      std::optional<diameter_entry_t> cofacet = cofacets1.next_raw();
       if (!cofacet) break;
       if (get_diameter(*cofacet) == get_diameter(simplex)) return *cofacet;
     }
@@ -953,13 +955,11 @@ template <typename Filtration> class ripser {
     columns_to_reduce.clear();
     std::vector<diameter_simplex_t> next_simplices;
 
-    simplex_coboundary_enumerator cofacets(filt);
-
     for (diameter_simplex_t& simplex : simplices) {
-      cofacets.set_simplex(filt.make_diameter_entry(simplex, 1), dim - 1);
+      cofacets2.set_simplex(filt.make_diameter_entry(simplex, 1), dim - 1);
 
       while(true) { // stupid C++
-        std::optional<diameter_entry_t> cofacet = cofacets.next(false);
+        std::optional<diameter_entry_t> cofacet = cofacets2.next(false);
         if (!cofacet) break;
 #ifdef INDICATE_PROGRESS
         if (std::chrono::steady_clock::now() > next) {
@@ -1046,12 +1046,11 @@ template <typename Filtration> class ripser {
     std::optional<diameter_entry_t> init_coboundary_and_get_pivot(const diameter_entry_t simplex,
         Column& working_coboundary, const dimension_t dim,
         entry_hash_map& pivot_column_index) {
-      FIXME_STATIC simplex_coboundary_enumerator cofacets(filt);
       bool check_for_emergent_pair = true;
       cofacet_entries.clear();
-      cofacets.set_simplex(simplex, dim);
+      cofacets2.set_simplex(simplex, dim);
       while(true) { // stupid C++
-        std::optional<diameter_entry_t> cofacet = cofacets.next();
+        std::optional<diameter_entry_t> cofacet = cofacets2.next();
         if (!cofacet) break;
         cofacet_entries.push_back(*cofacet);
         if (check_for_emergent_pair && (get_diameter(simplex) == get_diameter(*cofacet))) {
@@ -1070,11 +1069,10 @@ template <typename Filtration> class ripser {
   template <typename Column>
     void add_simplex_coboundary(const diameter_entry_t simplex, const dimension_t dim,
         Column& working_reduction_column, Column& working_coboundary) {
-      FIXME_STATIC simplex_coboundary_enumerator cofacets(filt);
       working_reduction_column.push(simplex);
-      cofacets.set_simplex(simplex, dim);
+      cofacets1.set_simplex(simplex, dim);
       while(true) { // stupid C++
-        std::optional<diameter_entry_t> cofacet = cofacets.next();
+        std::optional<diameter_entry_t> cofacet = cofacets1.next();
         if (!cofacet) break;
         working_coboundary.push(*cofacet);
       }
