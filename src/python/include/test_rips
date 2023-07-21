@@ -1,6 +1,6 @@
 #!/usr/bin/zsh
-set -e
-g++ ripser.cc -O2 -DNDEBUG -Wall -g `boost-includes` 
+#set -e
+g++ ripser.cc -O2 -DNDEBUG -Wall -g `boost-includes` || exit -1
 # push
 time ./a.out --format point-cloud ~/repos/ripser/examples/o3_1024.txt >! /tmp/new1
 # pop
