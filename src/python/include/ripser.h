@@ -844,7 +844,7 @@ template <class Key, class T, class H, class E> using hash_map = boost::unordere
 template <class Key, class T, class H, class E> using hash_map = boost::unordered_map<Key, T, H, E>;
 #endif
 
-template <typename Filtration> class ripser {
+template <typename Filtration> class persistent_cohomology {
   using size_t = typename Filtration::size_t;
   using coefficient_t = typename Filtration::coefficient_t;
   using coefficient_storage_t = typename Filtration::coefficient_storage_t;
@@ -879,7 +879,7 @@ template <typename Filtration> class ripser {
     return multiplicative_inverse_[c];
   }
   public:
-  ripser(Filtration&& _filt, dimension_t _dim_max, coefficient_t _modulus)
+  persistent_cohomology(Filtration&& _filt, dimension_t _dim_max, coefficient_t _modulus)
     : filt(std::move(_filt)), n(filt.num_vertices()),
     dim_max(std::min<vertex_t>(_dim_max, n - 2)),
     modulus(_modulus),
@@ -1506,11 +1506,11 @@ struct Ripser_all {
         << std::endl;
 
       Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
-      ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
     } else if (format == POINT_CLOUD && threshold < std::numeric_limits<value_t>::max()) {
       sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
       Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
-      ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
     } else {
       compressed_lower_distance_matrix dist =
         read_file(filename ? file_stream : std::cin, format);
@@ -1542,7 +1542,7 @@ struct Ripser_all {
           << std::endl;
         Filt_low rf(std::move(dist), dim_max, enclosing_radius,
             modulus);
-        ripser<Filt_low>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        persistent_cohomology<Filt_low>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
       } else {
         std::cout << "sparse distance matrix with " << dist.size() << " points and "
           << num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
@@ -1550,7 +1550,7 @@ struct Ripser_all {
 
         Filt_sparse rf(sparse_distance_matrix(std::move(dist), threshold),
             dim_max, threshold, modulus);
-        ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
       }
     }
     return 0;
