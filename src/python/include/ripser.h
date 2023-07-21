@@ -522,9 +522,9 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
     entry_plain_t() {}
     friend const entry_plain_t& get_entry(const entry_plain_t& e) { return e; }
   };
-  simplex_t get_index(const entry_plain_t& i) const { return i.index; }
-  simplex_t get_coefficient(const entry_plain_t& i) const { return 1; }
-  void set_coefficient(entry_plain_t& e, const coefficient_t c) const { assert(c==1); }
+  static simplex_t get_index(const entry_plain_t& i) { return i.index; }
+  static simplex_t get_coefficient(const entry_plain_t& i) { return 1; }
+  static void set_coefficient(entry_plain_t& e, const coefficient_t c) { assert(c==1); }
 
   typedef std::conditional_t<use_coefficients, entry_with_coeff_t, entry_plain_t> entry_t;
   entry_t make_entry(simplex_t i, coefficient_t c) const { return entry_t(i, c, num_bits_for_coeff()); }
@@ -551,7 +551,7 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
     simplex_t index;
     friend value_t get_diameter(const diameter_simplex_t& i) { return i.diameter; }
   };
-  simplex_t get_index(const diameter_simplex_t& i) const { return i.index; } // TODO: make it static
+  static simplex_t get_index(const diameter_simplex_t& i) { return i.index; }
 
   struct diameter_entry_t : std::pair<value_t, entry_t> {
     using std::pair<value_t, entry_t>::pair;
@@ -902,7 +902,7 @@ template <typename Filtration> class ripser {
 
   std::optional<diameter_entry_t> get_zero_pivot_facet(const diameter_entry_t simplex, const dimension_t dim) {
     facets.set_simplex(simplex, dim);
-    while(true) { // stupid C++
+    while(true) {
       std::optional<diameter_entry_t> facet = facets.next();
       if (!facet) break;
       if (get_diameter(*facet) == get_diameter(simplex)) return *facet;
@@ -912,7 +912,7 @@ template <typename Filtration> class ripser {
 
   std::optional<diameter_entry_t> get_zero_pivot_cofacet(const diameter_entry_t simplex, const dimension_t dim) {
     cofacets1.set_simplex(simplex, dim);
-    while(true) { // stupid C++
+    while(true) {
       std::optional<diameter_entry_t> cofacet = cofacets1.next_raw();
       if (!cofacet) break;
       if (get_diameter(*cofacet) == get_diameter(simplex)) return *cofacet;
@@ -958,7 +958,7 @@ template <typename Filtration> class ripser {
     for (diameter_simplex_t& simplex : simplices) {
       cofacets2.set_simplex(filt.make_diameter_entry(simplex, 1), dim - 1);
 
-      while(true) { // stupid C++
+      while(true) {
         std::optional<diameter_entry_t> cofacet = cofacets2.next(false);
         if (!cofacet) break;
 #ifdef INDICATE_PROGRESS
@@ -1049,7 +1049,7 @@ template <typename Filtration> class ripser {
       bool check_for_emergent_pair = true;
       cofacet_entries.clear();
       cofacets2.set_simplex(simplex, dim);
-      while(true) { // stupid C++
+      while(true) {
         std::optional<diameter_entry_t> cofacet = cofacets2.next();
         if (!cofacet) break;
         cofacet_entries.push_back(*cofacet);
