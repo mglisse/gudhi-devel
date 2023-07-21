@@ -142,6 +142,8 @@ std::vector<coefficient_storage_t> multiplicative_inverse_vector(const coefficie
   std::vector<coefficient_storage_t> inverse(m);
   if (!is_prime(m))
     throw std::domain_error("Modulus must be a prime number");
+  if ((m - 1) != (coefficient_storage_t)(m - 1))
+    throw std::overflow_error("Modulus is too large");
   inverse[1] = 1;
   // m = a * (m / a) + m % a
   // Multipying with inverse(a) * inverse(m % a):
@@ -326,7 +328,7 @@ struct euclidean_distance_matrix_ {
 
     vertex_t size() const { return points.size(); }
   private:
-    std::vector<std::vector<value_t>> points; // should become private
+    std::vector<std::vector<value_t>> points;
 };
 
 // The gratuitous restrictions on what can be specialized in C++ are annoying.
@@ -404,7 +406,7 @@ class cns_encoding {
           throw std::overflow_error("cannot encode all simplices of dimension " + std::to_string(k) + " with " + std::to_string(n) + " vertices using only " + std::to_string(available_bits) + " bits");
         }
       }
-      extra_bits = available_bits - log2up(max_simplex_index);
+      extra_bits = available_bits - log2up(max_simplex_index + 1);
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
@@ -484,7 +486,7 @@ class bitfield_encoding {
 template <typename DistanceMatrix, typename SimplexEncoding, typename Params> struct rips_filtration {
   using size_t = typename Params::size_t;
   using vertex_t = typename SimplexEncoding::vertex_t;
-  static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
+  // static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
   using simplex_t = typename SimplexEncoding::simplex_t;
   using dimension_t = typename SimplexEncoding::dimension_t;
   using value_t = typename DistanceMatrix::value_t;
@@ -587,8 +589,8 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     modulus(_modulus), simplex_encoding(n, dim_max + 2), bits_for_coeff(log2up(modulus-1)) {
       // See entry_with_coeff_t for the logic for log2up(modulus-1) (storing coeff-1)
       if (use_coefficients && simplex_encoding.num_extra_bits() < num_bits_for_coeff())
+        // TODO: include relevant numbers in the message
         throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
-      // TODO: include relevant numbers in the message
     }
 
   vertex_t num_vertices() const { return n; }
@@ -886,8 +888,6 @@ template <typename Filtration> class persistent_cohomology {
     multiplicative_inverse_(multiplicative_inverse_vector<coefficient_storage_t>(_modulus)),
     facets(filt), cofacets1(filt), cofacets2(filt)
   {
-      if ((modulus - 1) != (coefficient_storage_t)(modulus - 1))
-        throw std::overflow_error("Modulus is too large");
     }
 
 
@@ -1208,3 +1208,49 @@ struct Params1 {
   // Check which ones need to be signed, and which ones could be unsigned instead
 };
 #endif
+
+// Trying to write a magic function
+template<class Params, class SimplexEncoding, class DistanceMatrix, class OutDim, class OutPair>
+void help2(DistanceMatrix&& dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+  typedef rips_filtration<DistanceMatrix, SimplexEncoding, Params> Filt;
+  typedef persistent_cohomology<Filt> Pcoh;
+  typename Params::value_t threshold=0; // FIXME!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  Filt filt(std::move(dist), dim_max, threshold, modulus);
+}
+template<bool use_coefficients_, class simplex_t_, class value_t_> struct TParams {
+  // hardcode most options
+  typedef std::size_t size_t;
+  typedef value_t_ value_t;
+  typedef int8_t dimension_t;
+  typedef int vertex_t;
+  typedef simplex_t_ simplex_t;
+  typedef uint16_t coefficient_storage_t;
+  typedef uint_least32_t coefficient_t;
+  static const bool use_coefficients = use_coefficients_;
+};
+template<bool use_coefficients, class DistanceMatrix, class OutDim, class OutPair>
+void help1(DistanceMatrix&& dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+  auto n = dist.size();
+  int bits_per_vertex = log2up(n);
+  int bits_for_coeff = log2up(modulus - 1); // duplicating logic :-( Also, if modulus is something absurd, the diagnostic is too late
+  int bitfield_size = bits_per_vertex * (dim_max + 2) + bits_for_coeff;
+  if (bitfield_size <= 64) { // use bitfield-64
+    typedef TParams<use_coefficients, uint64_t, typename DistanceMatrix::value_t> P;
+    help2<P, bitfield_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+  } else if (bitfield_size <= 128) { // use bitfield-128
+    typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
+    help2<P, bitfield_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+  } else { // use cns-128
+    typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
+    help2<P, cns_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+  }
+  // Does cns-64 have its place on linux?
+  // TODO: on windows, only bitfield-64 and cns-64
+}
+template<class DistanceMatrix, class OutDim, class OutPair>
+void ripser(DistanceMatrix dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+  if (modulus == 2)
+    help1<false>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+  else
+    help1<true >(std::move(dist), modulus, dim_max, output_dim, output_pair);
+}
