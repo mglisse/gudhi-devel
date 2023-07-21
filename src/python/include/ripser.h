@@ -86,8 +86,8 @@ struct Params1 {
   typedef int vertex_t;
   typedef unsigned __int128 simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
-  typedef uint16_t coefficient_t; // Mostly for the table of multiplicative inverses
-  // FIXME We need x * y % z to work, but promotion from uint16_t to int is not enough
+  typedef uint16_t coefficient_storage_t; // Mostly for the table of multiplicative inverses
+  typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough
   static const bool use_coefficients = false;
 
   // Assumptions used in the code:
@@ -157,9 +157,11 @@ coefficient_t normalize(const coefficient_t n, const coefficient_t modulus) {
   return n > modulus / 2 ? n - modulus : n;
 }
 
-template<class coefficient_t>
-std::vector<coefficient_t> multiplicative_inverse_vector(const coefficient_t m) {
-  std::vector<coefficient_t> inverse(m);
+template<class coefficient_storage_t, class coefficient_t>
+std::vector<coefficient_storage_t> multiplicative_inverse_vector(const coefficient_t m) {
+  std::vector<coefficient_storage_t> inverse(m);
+  if (!is_prime(m))
+    throw std::domain_error("Modulus must be a prime number");
   inverse[1] = 1;
   // m = a * (m / a) + m % a
   // Multipying with inverse(a) * inverse(m % a):
@@ -496,7 +498,8 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
   using simplex_t = typename SimplexEncoding::simplex_t;
   using dimension_t = typename SimplexEncoding::dimension_t;
   using value_t = typename DistanceMatrix::value_t;
-  using coefficient_t = uint16_t; // FIXME: where should this come from?
+  using coefficient_storage_t = Params1::coefficient_storage_t; // FIXME: where should this come from?
+  using coefficient_t = Params1::coefficient_t; // FIXME: where should this come from?
   static constexpr bool use_coefficients = Params1::use_coefficients; // FIXME: where should this come from?
 
   // The definition of entry_t could be added in some intermediate layer between SimplexEncoding and here
@@ -702,10 +705,8 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
       value_t cofacet_diameter = get_diameter(simplex);
       for (vertex_t i : vertices) cofacet_diameter = std::max(cofacet_diameter, dist(j, i));
       simplex_t cofacet_index = idx_above + simplex_encoding(j--, k + 1) + idx_below;
-      const coefficient_t modulus = parent.modulus;
-      // TODO: avoid this %, using coeff or modulus-coeff
-      coefficient_t cofacet_coefficient =
-        (k & 1 ? modulus - 1 : 1) * parent.get_coefficient(simplex) % modulus;
+      coefficient_t cofacet_coefficient = parent.get_coefficient(simplex);
+      if (k & 1) cofacet_coefficient = parent.modulus - cofacet_coefficient;
       return parent.make_diameter_entry(cofacet_diameter, cofacet_index, cofacet_coefficient);
     }
     std::optional<diameter_entry_t> next(bool all_cofacets = true) {
@@ -852,6 +853,7 @@ template <class Key, class T, class H, class E> using hash_map = boost::unordere
 template <typename Filtration> class ripser {
   using size_t = typename Filtration::size_t;
   using coefficient_t = typename Filtration::coefficient_t;
+  using coefficient_storage_t = typename Filtration::coefficient_storage_t;
   using dimension_t = typename Filtration::dimension_t;
   using value_t = typename Filtration::value_t;
   using vertex_t = typename Filtration::vertex_t;
@@ -872,19 +874,24 @@ template <typename Filtration> class ripser {
   const vertex_t n;
   const dimension_t dim_max;
   const coefficient_t modulus;
-  const std::vector<coefficient_t> multiplicative_inverse;
+  const std::vector<coefficient_storage_t> multiplicative_inverse_;
   mutable std::vector<diameter_entry_t> cofacet_entries;
   mutable std::vector<vertex_t> vertices;
 
+  coefficient_t multiplicative_inverse(coefficient_t c) const {
+    return multiplicative_inverse_[c];
+  }
   public:
   ripser(Filtration&& _filt, dimension_t _dim_max, coefficient_t _modulus)
     : filt(std::move(_filt)), n(filt.num_vertices()),
     dim_max(std::min<vertex_t>(_dim_max, n - 2)),
     modulus(_modulus),
-    multiplicative_inverse(multiplicative_inverse_vector(_modulus)) {
+    multiplicative_inverse_(multiplicative_inverse_vector<coefficient_storage_t>(_modulus)) {
       if (filt.num_bits_for_coeff() < log2up(modulus-1)) // the logic for log2up(modulus-1) appears in 3 different places :-(
         throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
-      // TODO: include relevant numbers in the message
+        // TODO: include relevant numbers in the message
+      if ((modulus - 1) != (coefficient_storage_t)(modulus - 1))
+        throw std::overflow_error("Modulus is too large");
     }
 
 
@@ -1131,7 +1138,7 @@ template <typename Filtration> class ripser {
               size_t index_column_to_add = pair->second;
               coefficient_t factor =
                 modulus - filt.get_coefficient(*pivot) *
-                multiplicative_inverse[filt.get_coefficient(other_pivot)] %
+                multiplicative_inverse(filt.get_coefficient(other_pivot)) %
                 modulus;
 
               // It saves a little bit (3% on an example, 0% on another) if we pass pivot to add_coboundary and avoid pushing entries smaller than pivot in working_coboundary
