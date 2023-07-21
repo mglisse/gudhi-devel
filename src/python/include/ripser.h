@@ -75,8 +75,6 @@ struct heap : std::priority_queue<T, V, C> {
 };
 #endif
 
-#define FIXME_STATIC static
-
 struct Params1 {
   // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
   // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess.
@@ -191,152 +189,160 @@ enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
 template <class Params, compressed_matrix_layout Layout>
 struct compressed_distance_matrix {
-  typedef typename Params::vertex_t vertex_t;
-  typedef typename Params::value_t value_t;
-  std::vector<value_t> distances;
-  std::vector<value_t*> rows;
-
-  compressed_distance_matrix(std::vector<value_t>&& _distances)
-    : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
-      assert(distances.size() == (size_t)size() * (size() - 1) / 2);
-      init_rows();
-    }
-
-  template <typename DistanceMatrix>
-    compressed_distance_matrix(const DistanceMatrix& mat)
-    : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) {
-      init_rows();
-
-      for (vertex_t i = 1; i < size(); ++i)
-        for (vertex_t j = 0; j < i; ++j) rows[i][j] = mat(i, j);
-    }
-
-  value_t operator()(const vertex_t i, const vertex_t j) const {
-    if (i == j) return 0;
-    if ((Layout == LOWER_TRIANGULAR) ? (i < j) : (i > j))
-      return rows[j][i];
-    else
-      return rows[i][j];
-  }
-  vertex_t size() const { return rows.size(); }
+  public:
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::value_t value_t;
+    std::vector<value_t> distances; // TODO: private
   private:
-  void init_rows() {
-    if constexpr (Layout == LOWER_TRIANGULAR) {
-      value_t* pointer = &distances[0];
-      for (vertex_t i = 1; i < size(); ++i) {
-        rows[i] = pointer;
-        pointer += i;
+    std::vector<value_t*> rows;
+
+  public:
+    compressed_distance_matrix(std::vector<value_t>&& _distances)
+      : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
+        assert(distances.size() == (size_t)size() * (size() - 1) / 2);
+        init_rows();
       }
-    } else { // UPPER_TRIANGULAR
-      value_t* pointer = &distances[0] - 1;
-      for (vertex_t i = 0; i < size() - 1; ++i) {
-        rows[i] = pointer;
-        pointer += size() - i - 2;
+
+    template <typename DistanceMatrix>
+      compressed_distance_matrix(const DistanceMatrix& mat)
+      : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) {
+        init_rows();
+
+        for (vertex_t i = 1; i < size(); ++i)
+          for (vertex_t j = 0; j < i; ++j) rows[i][j] = mat(i, j);
+      }
+
+    value_t operator()(const vertex_t i, const vertex_t j) const {
+      if (i == j) return 0;
+      if ((Layout == LOWER_TRIANGULAR) ? (i < j) : (i > j))
+        return rows[j][i];
+      else
+        return rows[i][j];
+    }
+    vertex_t size() const { return rows.size(); }
+  private:
+    void init_rows() {
+      if constexpr (Layout == LOWER_TRIANGULAR) {
+        value_t* pointer = &distances[0];
+        for (vertex_t i = 1; i < size(); ++i) {
+          rows[i] = pointer;
+          pointer += i;
+        }
+      } else { // UPPER_TRIANGULAR
+        value_t* pointer = &distances[0] - 1;
+        for (vertex_t i = 0; i < size() - 1; ++i) {
+          rows[i] = pointer;
+          pointer += size() - i - 2;
+        }
       }
     }
-  }
 };
 
 template <class Params>
 struct sparse_distance_matrix_ {
-  static constexpr bool is_sparse = true;
-  typedef typename Params::vertex_t vertex_t;
-  typedef typename Params::value_t value_t;
-  struct vertex_diameter_t {
-    vertex_diameter_t() =default;
-    vertex_diameter_t(vertex_t i_, value_t d_) : i(i_), d(d_) {}
-    // gcc is faster with those 2 lines (or with a std::pair) :-(
-    //vertex_diameter_t(vertex_diameter_t const&o)noexcept :i(o.i),d(o.d){}
-    //vertex_diameter_t&operator=(vertex_diameter_t const&o) noexcept{i=o.i;d=o.d;return*this;}
-    vertex_t i; value_t d;
-    friend vertex_t get_vertex(const vertex_diameter_t& i) { return i.i; }
-    friend value_t get_diameter(const vertex_diameter_t& i) { return i.d; }
-    friend bool operator<(vertex_diameter_t const& a, vertex_diameter_t const& b) {
-      if (a.i < b.i) return true;
-      if (a.i > b.i) return false;
-      return a.d < b.d;
-    }
-  };
+  public:
+    static constexpr bool is_sparse = true;
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::value_t value_t;
+    struct vertex_diameter_t {
+      vertex_diameter_t() =default;
+      vertex_diameter_t(vertex_t i_, value_t d_) : i(i_), d(d_) {}
+      // gcc is faster with those 2 lines (or with a std::pair) :-(
+      //vertex_diameter_t(vertex_diameter_t const&o)noexcept :i(o.i),d(o.d){}
+      //vertex_diameter_t&operator=(vertex_diameter_t const&o) noexcept{i=o.i;d=o.d;return*this;}
+      vertex_t i; value_t d;
+      friend vertex_t get_vertex(const vertex_diameter_t& i) { return i.i; }
+      friend value_t get_diameter(const vertex_diameter_t& i) { return i.d; }
+      friend bool operator<(vertex_diameter_t const& a, vertex_diameter_t const& b) {
+        if (a.i < b.i) return true;
+        if (a.i > b.i) return false;
+        return a.d < b.d;
+      }
+    };
 
-  std::vector<std::vector<vertex_diameter_t>> neighbors;
+    std::vector<std::vector<vertex_diameter_t>> neighbors;
+    size_t num_edges;
+
+  private:
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
 #if BOOST_VERSION >= 108100
-  boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
+    boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
 #else
-  boost::unordered_map<std::pair<vertex_t,vertex_t>,value_t> m;
+    boost::unordered_map<std::pair<vertex_t,vertex_t>,value_t> m;
 #endif
-  // Would a vector<unordered_map> (one map per vertex) have any advantage?
+    // Would a vector<unordered_map> (one map per vertex) have any advantage?
 #endif
-  size_t num_edges;
 
-  sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
-      size_t _num_edges)
-    : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
-
-  template <typename DistanceMatrix>
-    sparse_distance_matrix_(const DistanceMatrix& mat, const value_t threshold)
-    : neighbors(mat.size()), num_edges(0) {
-
-      for (vertex_t i = 0; i < size(); ++i)
-        for (vertex_t j = 0; j < size(); ++j)
-          if (i != j) {
-            auto d = mat(i, j);
-            if (d <= threshold) {
-              ++num_edges;
-              neighbors[i].emplace_back(j, d);
-            }
-          }
-      init();
-    }
-
-  value_t operator()(const vertex_t i, const vertex_t j) const {
-#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
-    return m.at(std::minmax(i,j));
-    //// We never hit the infinity case?
-    // auto it = m.find(std::minmax(i,j));
-    // return (it != m.end()) ? *it : std::numeric_limits<value_t>::infinity();
-#else
-    auto neighbor =
-      std::lower_bound(neighbors[i].begin(), neighbors[i].end(), vertex_diameter_t{j, 0});
-    return (neighbor != neighbors[i].end() && get_vertex(*neighbor) == j)
-      ? get_diameter(*neighbor)
-      : std::numeric_limits<value_t>::infinity();
-#endif
-  }
-  private:
-  void init() {
-#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
-    for(vertex_t i=0; i<size(); ++i){
-      for(auto n:neighbors[i]){
-        m[std::minmax(i,get_vertex(n))]=get_diameter(n);
-      }
-    }
-#endif
-  }
   public:
-  vertex_t size() const { return neighbors.size(); }
+    sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
+        size_t _num_edges)
+      : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
+
+    template <typename DistanceMatrix>
+      sparse_distance_matrix_(const DistanceMatrix& mat, const value_t threshold)
+      : neighbors(mat.size()), num_edges(0) {
+
+        for (vertex_t i = 0; i < size(); ++i)
+          for (vertex_t j = 0; j < size(); ++j)
+            if (i != j) {
+              auto d = mat(i, j);
+              if (d <= threshold) {
+                ++num_edges;
+                neighbors[i].emplace_back(j, d);
+              }
+            }
+        init();
+      }
+
+    value_t operator()(const vertex_t i, const vertex_t j) const {
+#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+      return m.at(std::minmax(i,j));
+      //// We never hit the infinity case?
+      // auto it = m.find(std::minmax(i,j));
+      // return (it != m.end()) ? *it : std::numeric_limits<value_t>::infinity();
+#else
+      auto neighbor =
+        std::lower_bound(neighbors[i].begin(), neighbors[i].end(), vertex_diameter_t{j, 0});
+      return (neighbor != neighbors[i].end() && get_vertex(*neighbor) == j)
+        ? get_diameter(*neighbor)
+        : std::numeric_limits<value_t>::infinity();
+#endif
+    }
+    vertex_t size() const { return neighbors.size(); }
+  private:
+    void init() {
+#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+      for(vertex_t i=0; i<size(); ++i){
+        for(auto n:neighbors[i]){
+          m[std::minmax(i,get_vertex(n))]=get_diameter(n);
+        }
+      }
+#endif
+    }
 };
 
 template <class Params>
 struct euclidean_distance_matrix_ {
-  typedef typename Params::vertex_t vertex_t;
-  typedef typename Params::value_t value_t;
-  std::vector<std::vector<value_t>> points; // should become private
+  public:
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::value_t value_t;
 
-  euclidean_distance_matrix_(std::vector<std::vector<value_t>>&& _points)
-    : points(std::move(_points)) {
-      for (auto p : points) { assert(p.size() == points.front().size()); }
+    euclidean_distance_matrix_(std::vector<std::vector<value_t>>&& _points)
+      : points(std::move(_points)) {
+        for (auto p : points) { assert(p.size() == points.front().size()); }
+      }
+
+    value_t operator()(const vertex_t i, const vertex_t j) const {
+      assert((size_t)i < points.size());
+      assert((size_t)j < points.size());
+      return std::sqrt(std::inner_product(
+            points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
+            [](value_t u, value_t v) { return (u - v) * (u - v); }));
     }
 
-  value_t operator()(const vertex_t i, const vertex_t j) const {
-    assert((size_t)i < points.size());
-    assert((size_t)j < points.size());
-    return std::sqrt(std::inner_product(
-          points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
-          [](value_t u, value_t v) { return (u - v) * (u - v); }));
-  }
-
-  vertex_t size() const { return points.size(); }
+    vertex_t size() const { return points.size(); }
+  private:
+    std::vector<std::vector<value_t>> points; // should become private
 };
 
 // The gratuitous restrictions on what can be specialized in C++ are annoying.
@@ -492,7 +498,7 @@ class bitfield_encoding {
 };
 
 template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<Params1>> struct rips_filtration {
-  using size_t = std::size_t; // Really?
+  using size_t = Params1::size_t; // Really?
   using vertex_t = typename SimplexEncoding::vertex_t;
   static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
   using simplex_t = typename SimplexEncoding::simplex_t;
@@ -531,7 +537,7 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
 
   static_assert(sizeof(entry_t) == sizeof(simplex_t), "size of entry_t is not the same as simplex_t");
 
-  // TODO: avoid storing filtp when !use_coefficients
+  // TODO: avoid storing filtp when !use_coefficients (same for equal_index and greater_*)
   struct entry_hash {
     entry_hash(rips_filtration const& filt) : filtp(&filt) {}
     rips_filtration const* filtp;
@@ -585,17 +591,21 @@ template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<
   const DistanceMatrix dist; // only store a reference instead?
   const vertex_t n; // redundant with dist?
   const dimension_t dim_max;
-  const value_t threshold; // TODO: move this into DistanceMatrix somehow.
+  const value_t threshold; // It would be nice if this was only in DistanceMatrix, but inconvenient.
   const coefficient_t modulus;
   const SimplexEncoding simplex_encoding; // only store a reference instead?
-  mutable std::vector<vertex_t> vertices; // we must not to have several threads looking at the same complex
+  mutable std::vector<vertex_t> vertices; // we must not have several threads looking at the same complex
   int bits_for_coeff;
 
   rips_filtration(DistanceMatrix&& _dist, dimension_t _dim_max, value_t _threshold, coefficient_t _modulus)
     : dist(std::move(_dist)), n(dist.size()),
     dim_max(std::min<vertex_t>(_dim_max, dist.size() - 2)), threshold(_threshold),
-    modulus(_modulus), simplex_encoding(n, dim_max + 2), bits_for_coeff(log2up(modulus-1)) { }
-  // The logic for log2up(modulus-1) is in a different place from the actual implementation (storing coeff-1), not good
+    modulus(_modulus), simplex_encoding(n, dim_max + 2), bits_for_coeff(log2up(modulus-1)) {
+      // See entry_with_coeff_t for the logic for log2up(modulus-1) (storing coeff-1)
+      if (use_coefficients && simplex_encoding.num_extra_bits() < num_bits_for_coeff())
+        throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
+      // TODO: include relevant numbers in the message
+    }
 
   vertex_t num_vertices() const { return n; }
   int num_bits_for_coeff() const { return bits_for_coeff; }
@@ -892,9 +902,6 @@ template <typename Filtration> class ripser {
     multiplicative_inverse_(multiplicative_inverse_vector<coefficient_storage_t>(_modulus)),
     facets(filt), cofacets1(filt), cofacets2(filt)
   {
-      if (filt.num_bits_for_coeff() < log2up(modulus-1)) // the logic for log2up(modulus-1) appears in 3 different places :-(
-        throw std::overflow_error("Not enough spare bits in the simplex encoding to store a coefficient");
-        // TODO: include relevant numbers in the message
       if ((modulus - 1) != (coefficient_storage_t)(modulus - 1))
         throw std::overflow_error("Modulus is too large");
     }
@@ -1250,10 +1257,11 @@ struct Ripser_all {
       assert(point.size() == points.front().size());
     }
 
+    std::size_t d = points.front().size();
     euclidean_distance_matrix eucl_dist(std::move(points));
     vertex_t n = eucl_dist.size();
     std::cout << "point cloud with " << n << " points in dimension "
-      << eucl_dist.points.front().size() << std::endl;
+      << d << std::endl;
 
     return eucl_dist;
   }
