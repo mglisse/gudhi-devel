@@ -77,7 +77,7 @@ struct heap : std::priority_queue<T, V, C> {
 
 struct Params1 {
   // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
-  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small...
+  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small, not worth it.
   typedef std::size_t size_t;
   typedef float value_t;
   typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
@@ -199,7 +199,7 @@ struct compressed_distance_matrix {
   public:
     compressed_distance_matrix(std::vector<value_t>&& _distances)
       : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
-        assert(distances.size() == (size_t)size() * (size() - 1) / 2);
+        assert(distances.size() == (std::size_t)size() * (size() - 1) / 2);
         init_rows();
       }
 
@@ -247,9 +247,11 @@ struct sparse_distance_matrix_ {
     struct vertex_diameter_t {
       vertex_diameter_t() =default;
       vertex_diameter_t(vertex_t i_, value_t d_) : i(i_), d(d_) {}
+#if 1
       // gcc is faster with those 2 lines (or with a std::pair) :-(
-      //vertex_diameter_t(vertex_diameter_t const&o)noexcept :i(o.i),d(o.d){}
-      //vertex_diameter_t&operator=(vertex_diameter_t const&o) noexcept{i=o.i;d=o.d;return*this;}
+      vertex_diameter_t(vertex_diameter_t const&o)noexcept :i(o.i),d(o.d){}
+      vertex_diameter_t&operator=(vertex_diameter_t const&o) noexcept{i=o.i;d=o.d;return*this;}
+#endif
       vertex_t i; value_t d;
       friend vertex_t get_vertex(const vertex_diameter_t& i) { return i.i; }
       friend value_t get_diameter(const vertex_diameter_t& i) { return i.d; }
@@ -261,7 +263,7 @@ struct sparse_distance_matrix_ {
     };
 
     std::vector<std::vector<vertex_diameter_t>> neighbors;
-    size_t num_edges;
+    std::size_t num_edges;
 
   private:
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
@@ -275,7 +277,7 @@ struct sparse_distance_matrix_ {
 
   public:
     sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
-        size_t _num_edges)
+        std::size_t _num_edges)
       : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
 
     template <typename DistanceMatrix>
@@ -333,8 +335,8 @@ struct euclidean_distance_matrix_ {
       }
 
     value_t operator()(const vertex_t i, const vertex_t j) const {
-      assert((size_t)i < points.size());
-      assert((size_t)j < points.size());
+      assert((std::size_t)i < points.size());
+      assert((std::size_t)j < points.size());
       return std::sqrt(std::inner_product(
             points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
             [](value_t u, value_t v) { return (u - v) * (u - v); }));
@@ -497,16 +499,17 @@ class bitfield_encoding {
     int num_extra_bits() const { return extra_bits; }
 };
 
-template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<Params1>> struct rips_filtration {
-  using size_t = Params1::size_t; // Really?
+// TODO: remove defaults
+template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<Params1>, typename Params = Params1> struct rips_filtration {
+  using size_t = std::size_t;
   using vertex_t = typename SimplexEncoding::vertex_t;
   static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
   using simplex_t = typename SimplexEncoding::simplex_t;
   using dimension_t = typename SimplexEncoding::dimension_t;
   using value_t = typename DistanceMatrix::value_t;
-  using coefficient_storage_t = Params1::coefficient_storage_t; // FIXME: where should this come from?
-  using coefficient_t = Params1::coefficient_t; // FIXME: where should this come from?
-  static constexpr bool use_coefficients = Params1::use_coefficients; // FIXME: where should this come from?
+  using coefficient_storage_t = typename Params::coefficient_storage_t;
+  using coefficient_t = typename Params::coefficient_t;
+  static constexpr bool use_coefficients = Params::use_coefficients;
 
   // The definition of entry_t could be added in some intermediate layer between SimplexEncoding and here
   struct entry_with_coeff_t {
