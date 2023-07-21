@@ -80,8 +80,8 @@ struct Params1 {
   // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess.
   typedef std::size_t size_t;
   typedef float value_t;
-  typedef int8_t dimension_t;
-  typedef int vertex_t;
+  typedef int8_t dimension_t; // Does it need to be signed?
+  typedef int vertex_t; // Does it need to be signed?
   typedef unsigned __int128 simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
   typedef uint16_t coefficient_storage_t; // Mostly for the table of multiplicative inverses
@@ -194,7 +194,7 @@ struct compressed_distance_matrix {
     typedef typename Params::value_t value_t;
     std::vector<value_t> distances; // TODO: private
   private:
-    std::vector<value_t*> rows;
+    std::vector<value_t*> rows; // Surprisingly, this is more efficient than computing i*(i-1)/2
 
   public:
     compressed_distance_matrix(std::vector<value_t>&& _distances)
