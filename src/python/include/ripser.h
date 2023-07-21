@@ -75,24 +75,6 @@ struct heap : std::priority_queue<T, V, C> {
 };
 #endif
 
-struct Params1 {
-  // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
-  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small, not worth it.
-  typedef std::size_t size_t;
-  typedef float value_t;
-  typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
-  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
-  typedef unsigned __int128 simplex_t;
-  // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
-  typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
-  typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough
-  static const bool use_coefficients = false;
-
-  // Assumptions used in the code:
-  // * dimension_t smaller than vertex_t
-  // Check which ones need to be signed, and which ones could be unsigned instead
-};
-
 template<class vertex_t_>
 class union_find {
   public:
@@ -499,9 +481,8 @@ class bitfield_encoding {
     int num_extra_bits() const { return extra_bits; }
 };
 
-// TODO: remove defaults
-template <typename DistanceMatrix, typename SimplexEncoding = bitfield_encoding<Params1>, typename Params = Params1> struct rips_filtration {
-  using size_t = std::size_t;
+template <typename DistanceMatrix, typename SimplexEncoding, typename Params> struct rips_filtration {
+  using size_t = typename Params::size_t;
   using vertex_t = typename SimplexEncoding::vertex_t;
   static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
   using simplex_t = typename SimplexEncoding::simplex_t;
@@ -1207,6 +1188,24 @@ template <typename Filtration> class ripser {
     }
 };
 
+struct Params1 {
+  // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
+  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small, not worth it.
+  typedef std::size_t size_t;
+  typedef float value_t;
+  typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
+  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
+  typedef unsigned __int128 simplex_t;
+  // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
+  typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
+  typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough
+  static const bool use_coefficients = false;
+
+  // Assumptions used in the code:
+  // * dimension_t smaller than vertex_t
+  // Check which ones need to be signed, and which ones could be unsigned instead
+};
+
 // Used as a template namespace
 template <class Params=Params1>
 struct Ripser_all {
@@ -1483,6 +1482,10 @@ struct Ripser_all {
       exit(-1);
     }
 
+    typedef bitfield_encoding<Params1> simplex_encoding;
+    typedef rips_filtration<sparse_distance_matrix, simplex_encoding, Params1> Filt_sparse;
+    typedef rips_filtration<compressed_lower_distance_matrix, simplex_encoding, Params1> Filt_low;
+
     auto output_dim = [](dimension_t dim) {
       std::cout << "persistence intervals in dim " << (int)dim << ":" << std::endl;
     };
@@ -1502,12 +1505,12 @@ struct Ripser_all {
         << dist.num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
         << std::endl;
 
-      rips_filtration<sparse_distance_matrix> rf(std::move(dist), dim_max, threshold, modulus);
-      ripser<rips_filtration<sparse_distance_matrix>>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
+      ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
     } else if (format == POINT_CLOUD && threshold < std::numeric_limits<value_t>::max()) {
       sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
-      rips_filtration<sparse_distance_matrix> rf(std::move(dist), dim_max, threshold, modulus);
-      ripser<rips_filtration<sparse_distance_matrix>>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
+      ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
     } else {
       compressed_lower_distance_matrix dist =
         read_file(filename ? file_stream : std::cin, format);
@@ -1537,17 +1540,17 @@ struct Ripser_all {
         std::cout << "distance matrix with " << dist.size()
           << " points, using threshold at enclosing radius " << enclosing_radius
           << std::endl;
-        rips_filtration<compressed_lower_distance_matrix> rf(std::move(dist), dim_max, enclosing_radius,
+        Filt_low rf(std::move(dist), dim_max, enclosing_radius,
             modulus);
-        ripser<rips_filtration<compressed_lower_distance_matrix>>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        ripser<Filt_low>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
       } else {
         std::cout << "sparse distance matrix with " << dist.size() << " points and "
           << num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
           << std::endl;
 
-        rips_filtration<sparse_distance_matrix> rf(sparse_distance_matrix(std::move(dist), threshold),
+        Filt_sparse rf(sparse_distance_matrix(std::move(dist), threshold),
             dim_max, threshold, modulus);
-        ripser<rips_filtration<sparse_distance_matrix>>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        ripser<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
       }
     }
     return 0;
