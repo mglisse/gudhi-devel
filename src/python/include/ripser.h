@@ -77,14 +77,14 @@ struct heap : std::priority_queue<T, V, C> {
 
 struct Params1 {
   // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
-  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess.
+  // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small...
   typedef std::size_t size_t;
   typedef float value_t;
-  typedef int8_t dimension_t; // Does it need to be signed?
-  typedef int vertex_t; // Does it need to be signed?
+  typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
+  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
   typedef unsigned __int128 simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
-  typedef uint16_t coefficient_storage_t; // Mostly for the table of multiplicative inverses
+  typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
   typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough
   static const bool use_coefficients = false;
 
@@ -367,7 +367,7 @@ template <typename ValueType> class compressed_sparse_matrix_ {
   void append_column() { bounds.push_back(entries.size()); }
 
   void push_back(const ValueType e) {
-    assert(0 < size());
+    assert(0 < bounds.size());
     entries.push_back(e);
     ++bounds.back();
   }
