@@ -1211,11 +1211,11 @@ struct Params1 {
 
 // Trying to write a magic function
 template<class Params, class SimplexEncoding, class DistanceMatrix, class OutDim, class OutPair>
-void help2(DistanceMatrix&& dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+void help2(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   typedef rips_filtration<DistanceMatrix, SimplexEncoding, Params> Filt;
   typedef persistent_cohomology<Filt> Pcoh;
-  typename Params::value_t threshold=0; // FIXME!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   Filt filt(std::move(dist), dim_max, threshold, modulus);
+  Pcoh(std::move(filt), dim_max, modulus).compute_barcodes(output_dim, output_pair);
 }
 template<bool use_coefficients_, class simplex_t_, class value_t_> struct TParams {
   // hardcode most options
@@ -1229,28 +1229,29 @@ template<bool use_coefficients_, class simplex_t_, class value_t_> struct TParam
   static const bool use_coefficients = use_coefficients_;
 };
 template<bool use_coefficients, class DistanceMatrix, class OutDim, class OutPair>
-void help1(DistanceMatrix&& dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   auto n = dist.size();
+  if (dim_max > n - 2) dim_max = n - 2; // FIXME: duplicated. problem if n unsigned and 0 or 1.
   int bits_per_vertex = log2up(n);
   int bits_for_coeff = log2up(modulus - 1); // duplicating logic :-( Also, if modulus is something absurd, the diagnostic is too late
   int bitfield_size = bits_per_vertex * (dim_max + 2) + bits_for_coeff;
   if (bitfield_size <= 64) { // use bitfield-64
     typedef TParams<use_coefficients, uint64_t, typename DistanceMatrix::value_t> P;
-    help2<P, bitfield_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+    help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if (bitfield_size <= 128) { // use bitfield-128
     typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
-    help2<P, bitfield_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+    help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else { // use cns-128
     typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
-    help2<P, cns_encoding<P>>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+    help2<P, cns_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
   // Does cns-64 have its place on linux?
   // TODO: on windows, only bitfield-64 and cns-64
 }
 template<class DistanceMatrix, class OutDim, class OutPair>
-void ripser(DistanceMatrix dist, unsigned modulus, int dim_max, OutDim&& output_dim, OutPair&& output_pair) {
+void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   if (modulus == 2)
-    help1<false>(std::move(dist), modulus, dim_max, output_dim, output_pair);
+    help1<false>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   else
-    help1<true >(std::move(dist), modulus, dim_max, output_dim, output_pair);
+    help1<true >(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
 }

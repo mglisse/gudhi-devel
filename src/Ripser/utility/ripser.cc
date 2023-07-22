@@ -336,10 +336,6 @@ struct Ripser_all {
       exit(-1);
     }
 
-    typedef bitfield_encoding<Params1> simplex_encoding;
-    typedef rips_filtration<sparse_distance_matrix, simplex_encoding, Params1> Filt_sparse;
-    typedef rips_filtration<compressed_lower_distance_matrix, simplex_encoding, Params1> Filt_low;
-
     auto output_dim = [](dimension_t dim) {
       std::cout << "persistence intervals in dim " << (int)dim << ":" << std::endl;
     };
@@ -359,12 +355,10 @@ struct Ripser_all {
         << dist.num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
         << std::endl;
 
-      Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
-      persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
     } else if (format == POINT_CLOUD && threshold < std::numeric_limits<value_t>::max()) {
       sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
-      Filt_sparse rf(std::move(dist), dim_max, threshold, modulus);
-      persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+      ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
     } else {
       compressed_lower_distance_matrix dist =
         read_file(filename ? file_stream : std::cin, format);
@@ -394,17 +388,13 @@ struct Ripser_all {
         std::cout << "distance matrix with " << dist.size()
           << " points, using threshold at enclosing radius " << enclosing_radius
           << std::endl;
-        Filt_low rf(std::move(dist), dim_max, enclosing_radius,
-            modulus);
-        persistent_cohomology<Filt_low>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        ripser(std::move(dist), dim_max, enclosing_radius, modulus, output_dim, output_pair);
       } else {
         std::cout << "sparse distance matrix with " << dist.size() << " points and "
           << num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
           << std::endl;
 
-        Filt_sparse rf(sparse_distance_matrix(std::move(dist), threshold),
-            dim_max, threshold, modulus);
-        persistent_cohomology<Filt_sparse>(std::move(rf), dim_max, modulus).compute_barcodes(output_dim, output_pair);
+        ripser(sparse_distance_matrix(std::move(dist), threshold), dim_max, threshold, modulus, output_dim, output_pair);
       }
     }
     return 0;
