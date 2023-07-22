@@ -1255,3 +1255,4 @@ void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t t
   else
     help1<true >(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
 }
+//FIXME: namespace!!!
