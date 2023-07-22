@@ -70,3 +70,8 @@ PYBIND11_MODULE(_ripser, m) {
   m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
 }
+
+// TODO:
+// * input matrice de distances "low" (et aussi "full"? ou que "full" et on convertit côté python?)
+// * input matrice de distances sparse "coo"
+// * réutiliser le code dans utility qui calcule maxmin et transforme parfois euclidean en sparse
