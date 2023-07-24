@@ -189,7 +189,7 @@ struct compressed_distance_matrix {
 
     template <typename DistanceMatrix>
       compressed_distance_matrix(const DistanceMatrix& mat)
-      : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) {
+      : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) { // TODO: cast mat.size() to size_t before the multiplication, just in case?
         init_rows();
 
         for (vertex_t i = 1; i < size(); ++i)
@@ -307,6 +307,7 @@ struct sparse_distance_matrix_ {
     }
 };
 
+// Do not feed this directly to ripser (slow), first convert to another matrix type
 template <class Params>
 struct euclidean_distance_matrix_ {
   public:
@@ -1228,6 +1229,10 @@ template<bool use_coefficients_, class simplex_t_, class value_t_> struct TParam
   typedef uint_least32_t coefficient_t;
   static const bool use_coefficients = use_coefficients_;
 };
+template<class value_t_> struct TParams2 {
+  typedef int vertex_t;
+  typedef value_t_ value_t;
+};
 template<bool use_coefficients, class DistanceMatrix, class OutDim, class OutPair>
 void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   auto n = dist.size();
@@ -1254,5 +1259,40 @@ void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t t
     help1<false>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   else
     help1<true >(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+}
+template<class DMParams, class OutDim, class OutPair>
+void ripser_auto(sparse_distance_matrix_<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+  ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+}
+template<class DMParams, compressed_matrix_layout Layout, class OutDim, class OutPair>
+void ripser_auto(compressed_distance_matrix<DMParams, Layout> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+  typedef typename DMParams::value_t value_t;
+  typedef typename DMParams::vertex_t vertex_t;
+  if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
+    sparse_distance_matrix_<DMParams> new_dist(dist, threshold);
+    ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
+  } else {
+    for (vertex_t i = 0; i < dist.size(); ++i) {
+      value_t r_i = -std::numeric_limits<value_t>::infinity();
+      for (vertex_t j = 0; j < dist.size(); ++j)
+        r_i = std::max(r_i, dist(i, j));
+      threshold = std::min(threshold, r_i);
+      // Should we also compute this when an explicit threshold is passed, in case the user passed an unnecessarily large threshold?
+    }
+    ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+  }
+}
+// Other = Euclidean. TODO: more robust dispatching... (how?)
+template<class DistanceMatrix, class OutDim, class OutPair>
+void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+  typedef typename DistanceMatrix::value_t value_t;
+  typedef TParams2<value_t> P;
+  if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
+    sparse_distance_matrix_<P> new_dist(dist, threshold);
+    ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
+  } else {
+    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist, threshold);
+    ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
+  }
 }
 //FIXME: namespace!!!
