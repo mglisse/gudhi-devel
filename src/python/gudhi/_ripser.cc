@@ -68,18 +68,55 @@ py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, 
   return ret;
 }
 
+struct P1 {
+  typedef int vertex_t;
+  typedef double value_t;
+};
+
+py::list lower(py::object low_mat, int max_dimension, double max_edge_length, unsigned homology_coeff_field) {
+  std::vector<double> distances;
+  int rowi = 0;
+  for (auto&& row : low_mat) {
+    if (rowi == 0) { ++rowi; continue; }
+    int coli = 0;
+    for (auto&& elem : row) {
+      distances.push_back(elem.cast<double>()); // need a cast?
+      if (++coli == rowi) break;
+    }
+    if (coli < rowi) throw std::invalid_argument("Not enough elements for a lower triangular matrix");
+    ++rowi;
+  };
+
+  typedef double T;
+  // TODO: split out the following code, ~ common with other functions?
+  std::vector<std::vector<std::array<T, 2>>> dgms;
+  {
+    py::gil_scoped_release release;
+    compressed_distance_matrix<P1, LOWER_TRIANGULAR> dist(std::move(distances));
+    auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
+    auto switch_dim = [&](int new_dim){
+      dgms.emplace_back();
+    };
+    ripser_auto(std::move(dist), max_dimension, max_edge_length, homology_coeff_field, switch_dim, output);
+  }
+  py::list ret;
+  for (auto&& dgm : dgms)
+    ret.append(py::array(py::cast(std::move(dgm))));
+  return ret;
+}
+
 PYBIND11_MODULE(_ripser, m) {
   py::bind_vector<Vf>(m, "VectorPairFloat" , py::buffer_protocol());
   py::bind_vector<Vd>(m, "VectorPairDouble", py::buffer_protocol());
+  // Remove the default for max_dimension?
   m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
+  m.def("_lower", lower, py::arg("matrix"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
 }
 
 // TODO:
 // * input matrice de distances "low" (et aussi "full"? ou que "full" et on convertit côté python?)
 // * input matrice de distances sparse "coo"
-// * transformer euclidean en dense
-// * réutiliser le code dans utility qui calcule maxmin et transforme parfois dense en sparse
 //
 // - sparse input -> sparse matrix
 // - euclidean input & threshold -> sparse matrix (don't build dense matrix)
