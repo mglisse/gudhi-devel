@@ -64,6 +64,11 @@
 
 #ifdef USE_BOOST_HEAP
 #include <boost/heap/d_ary_heap.hpp>
+#endif
+
+namespace Gudhi::ripser {
+
+#ifdef USE_BOOST_HEAP
 template <class T, class, class C>
 using heap = boost::heap::d_ary_heap<T, boost::heap::arity<8>, boost::heap::compare<C>>;
 #else
@@ -1329,4 +1334,4 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
     ripser_auto(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
-//FIXME: namespace!!!
+}

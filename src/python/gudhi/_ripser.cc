@@ -19,6 +19,8 @@
 
 #include <gudhi/ripser.h>
 
+using namespace Gudhi::ripser;
+
 namespace py = pybind11;
 typedef std::vector<std::array< float, 2>> Vf;
 typedef std::vector<std::array<double, 2>> Vd;

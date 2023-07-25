@@ -42,6 +42,8 @@
 
 #include <gudhi/ripser.h>
 
+using namespace Gudhi::ripser;
+
 struct Params1 {
   // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
   // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small, not worth it.
