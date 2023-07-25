@@ -159,6 +159,7 @@ constexpr const char* clear_line="\r\033[K";
 
 /* concept DistanceMatrix
 struct DistanceMatrix {
+  typedef category;
   typedef vertex_t;
   typedef value_t;
   value_t operator()(vertex_t i, vertex_t j) const;
@@ -169,11 +170,16 @@ struct DistanceMatrix {
 };
 */
 
+class Tag_dense {}; // Use directly, iterate on vertices
+class Tag_sparse {}; // Use directly, iterate on edges
+class Tag_other {}; // Could use directly as dense, but prefer converting it.
+
 enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
 template <class Params, compressed_matrix_layout Layout>
 struct compressed_distance_matrix {
   public:
+    typedef Tag_dense category;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
     std::vector<value_t> distances; // TODO: private
@@ -225,6 +231,7 @@ struct compressed_distance_matrix {
 template <class Params>
 struct sparse_distance_matrix_ {
   public:
+    typedef Tag_sparse category;
     static constexpr bool is_sparse = true;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
@@ -311,6 +318,7 @@ struct sparse_distance_matrix_ {
 template <class Params>
 struct euclidean_distance_matrix_ {
   public:
+    typedef Tag_other category;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
 
@@ -628,7 +636,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   }
 
   std::vector<diameter_simplex_t> get_edges() {
-    if constexpr (!is_sparse<DistanceMatrix>()) { // compressed_lower_distance_matrix
+    if constexpr (!std::is_same_v<typename DistanceMatrix::category, Tag_sparse>) { // compressed_lower_distance_matrix
       std::vector<diameter_simplex_t> edges;
       std::vector<vertex_t> vertices(2);
       // TODO: it would be convenient to have DistanceMatrix provide a range of neighbors at dist<=threshold even in the dense case (as a filtered_range)
@@ -660,7 +668,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   }
 
   // TODO: document in what way (if any) the order matters
-  template<class DistanceMatrix2, class=void> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
+  template<class DistanceMatrix2, class=typename DistanceMatrix2::category> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
     simplex_t idx_below, idx_above;
     vertex_t j;
     dimension_t k;
@@ -714,7 +722,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     }
   };
 
-  template <class DistanceMatrix2> class Simplex_coboundary_enumerator<DistanceMatrix2,std::enable_if_t<is_sparse<DistanceMatrix2>()>> {
+  template <class DistanceMatrix2> class Simplex_coboundary_enumerator<DistanceMatrix2, Tag_sparse> {
     typedef typename DistanceMatrix2::vertex_diameter_t vertex_diameter_t;
     simplex_t idx_below, idx_above;
     dimension_t k;
@@ -1260,6 +1268,7 @@ void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t t
   else
     help1<true >(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
 }
+#if 0
 template<class DMParams, class OutDim, class OutPair>
 void ripser_auto(sparse_distance_matrix_<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
@@ -1293,6 +1302,31 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
   } else {
     compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
+  }
+}
+#endif
+template<class DistanceMatrix, class OutDim, class OutPair>
+void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+  typedef typename DistanceMatrix::vertex_t vertex_t;
+  typedef typename DistanceMatrix::value_t value_t;
+  typedef TParams2<value_t> P;
+  if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_sparse>) {
+    ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+  } else if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
+    sparse_distance_matrix_<P> new_dist(dist, threshold);
+    ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
+  } else if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_dense>) {
+    for (vertex_t i = 0; i < dist.size(); ++i) {
+      value_t r_i = -std::numeric_limits<value_t>::infinity();
+      for (vertex_t j = 0; j < dist.size(); ++j)
+        r_i = std::max(r_i, dist(i, j));
+      threshold = std::min(threshold, r_i);
+      // Should we also compute this when an explicit threshold is passed, in case the user passed an unnecessarily large threshold?
+    }
+    ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+  } else {
+    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
+    ripser_auto(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
 //FIXME: namespace!!!
