@@ -60,15 +60,12 @@ template<class vertex_t_, class value_t_>struct DParams {
   typedef value_t_ value_t;
 };
 
-template<class T>
-py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
-  Numpy_euclidean<T> dist_{points.template unchecked<2>()};
-  if(dist_.data.ndim() != 2)
-    throw std::runtime_error("points must be a 2-dimensional array");
+template<class DistanceMatrix>
+py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix::value_t max_edge_length, unsigned homology_coeff_field) {
+  typedef typename DistanceMatrix::value_t T;
   std::vector<std::vector<std::array<T, 2>>> dgms;
   {
     py::gil_scoped_release release;
-    compressed_distance_matrix<DParams<int, T>, LOWER_TRIANGULAR> dist(dist_);
     auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
     auto switch_dim = [&](int new_dim){
       dgms.emplace_back();
@@ -82,24 +79,28 @@ py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, 
 }
 
 template<class T>
+py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
+  Numpy_euclidean<T> dist{points.template unchecked<2>()};
+  if(dist.data.ndim() != 2)
+    throw std::runtime_error("points must be a 2-dimensional array");
+
+  // ripser_auto should already do that
+#if 0
+  // optional as a trick to allow destruction where I want it, without hiding dist in some scope that ends too early.
+  std::optional<py::gil_scoped_release> release_local(std::in_place);
+  compressed_distance_matrix<DParams<int, T>, LOWER_TRIANGULAR> dist(dist_);
+  release_local.reset();
+#endif
+
+  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
+}
+
+template<class T>
 py::list full(py::array_t<T> matrix, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
   Full<T> dist{matrix.template unchecked<2>()};
   if(dist.data.ndim() != 2 || dist.data.shape(0) != dist.data.shape(1))
     throw std::runtime_error("Distance matrix must be a square 2-dimensional array");
-  std::vector<std::vector<std::array<T, 2>>> dgms;
-  {
-    py::gil_scoped_release release;
-    auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
-    auto switch_dim = [&](int new_dim){
-      dgms.emplace_back();
-    };
-    // FIXME: ripser_auto converts full to lower because of fragile dispatch
-    ripser_auto(std::move(dist), max_dimension, max_edge_length, homology_coeff_field, switch_dim, output);
-  }
-  py::list ret;
-  for (auto&& dgm : dgms)
-    ret.append(py::array(py::cast(std::move(dgm))));
-  return ret;
+  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
 }
 
 py::list lower(py::object low_mat, int max_dimension, double max_edge_length, unsigned homology_coeff_field) {
@@ -116,22 +117,11 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
     ++rowi;
   };
 
-  typedef double T;
-  // TODO: split out the following code, ~ common with other functions?
-  std::vector<std::vector<std::array<T, 2>>> dgms;
-  {
-    py::gil_scoped_release release;
-    compressed_distance_matrix<DParams<int, double>, LOWER_TRIANGULAR> dist(std::move(distances));
-    auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
-    auto switch_dim = [&](int new_dim){
-      dgms.emplace_back();
-    };
-    ripser_auto(std::move(dist), max_dimension, max_edge_length, homology_coeff_field, switch_dim, output);
-  }
-  py::list ret;
-  for (auto&& dgm : dgms)
-    ret.append(py::array(py::cast(std::move(dgm))));
-  return ret;
+  std::optional<py::gil_scoped_release> release_local(std::in_place);
+  compressed_distance_matrix<DParams<int, double>, LOWER_TRIANGULAR> dist(std::move(distances));
+  release_local.reset();
+
+  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
 }
 
 template<class V, class T>
@@ -148,28 +138,18 @@ py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int 
   typedef sparse_distance_matrix_<P> Dist;
   typedef typename Dist::vertex_diameter_t vertex_diameter_t;
 
-  // TODO: split out part of the following code, ~ common with other functions?
-  std::vector<std::vector<std::array<T, 2>>> dgms;
-  {
-    py::gil_scoped_release release;
-    std::vector<std::vector<vertex_diameter_t>> neighbors(num_vertices);
-    for (py::ssize_t e = 0; e < is.shape(0); ++e) {
-      neighbors[is(e)].emplace_back(js(e), fs(e));
-      neighbors[js(e)].emplace_back(is(e), fs(e));
-    }
-    for (size_t i = 0; i < neighbors.size(); ++i)
-      std::sort(neighbors[i].begin(), neighbors[i].end());
-    Dist dist(std::move(neighbors));
-    auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
-    auto switch_dim = [&](int new_dim){
-      dgms.emplace_back();
-    };
-    ripser_auto(std::move(dist), max_dimension, max_edge_length, homology_coeff_field, switch_dim, output);
+  std::optional<py::gil_scoped_release> release_local(std::in_place);
+  std::vector<std::vector<vertex_diameter_t>> neighbors(num_vertices);
+  for (py::ssize_t e = 0; e < is.shape(0); ++e) {
+    neighbors[is(e)].emplace_back(js(e), fs(e));
+    neighbors[js(e)].emplace_back(is(e), fs(e));
   }
-  py::list ret;
-  for (auto&& dgm : dgms)
-    ret.append(py::array(py::cast(std::move(dgm))));
-  return ret;
+  for (size_t i = 0; i < neighbors.size(); ++i)
+    std::sort(neighbors[i].begin(), neighbors[i].end());
+  Dist dist(std::move(neighbors));
+  release_local.reset();
+
+  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
 }
 
 PYBIND11_MODULE(_ripser, m) {
