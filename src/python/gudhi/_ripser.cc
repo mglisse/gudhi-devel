@@ -26,6 +26,7 @@ PYBIND11_MAKE_OPAQUE(Vf);
 PYBIND11_MAKE_OPAQUE(Vd);
 
 template<class T>struct Numpy_euclidean {
+  typedef Tag_other category;
   typedef int vertex_t;
   typedef T value_t;
 
@@ -44,6 +45,7 @@ template<class T>struct Numpy_euclidean {
 };
 
 template<class T>struct Full {
+  typedef Tag_dense category;
   typedef int vertex_t;
   typedef T value_t;
   decltype(std::declval<py::array_t<T>&>().template unchecked<2>()) data;
