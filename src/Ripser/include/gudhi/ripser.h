@@ -200,7 +200,7 @@ struct compressed_distance_matrix {
 
     template <typename DistanceMatrix>
       compressed_distance_matrix(const DistanceMatrix& mat)
-      : distances(mat.size() * (mat.size() - 1) / 2), rows(mat.size()) { // TODO: cast mat.size() to size_t before the multiplication, just in case?
+      : distances(static_cast<std::size_t>(mat.size()) * (mat.size() - 1) / 2), rows(mat.size()) { // vertex_t is meant for vertices. Using it for edges could be unsafe, so we cast to size_t.
         init_rows();
 
         for (vertex_t i = 1; i < size(); ++i)
