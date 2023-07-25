@@ -247,7 +247,7 @@ struct sparse_distance_matrix_ {
     };
 
     std::vector<std::vector<vertex_diameter_t>> neighbors;
-    std::size_t num_edges;
+    std::size_t num_edges; // TODO: useless, remove
 
   private:
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
@@ -261,7 +261,7 @@ struct sparse_distance_matrix_ {
 
   public:
     sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
-        std::size_t _num_edges)
+        std::size_t _num_edges = 0)
       : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
 
     template <typename DistanceMatrix>
@@ -1291,7 +1291,7 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
     sparse_distance_matrix_<P> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
-    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist, threshold);
+    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
