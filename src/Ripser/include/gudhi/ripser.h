@@ -1181,6 +1181,7 @@ template <typename Filtration> class persistent_cohomology {
     }
 
   // Add a separate output_essential?
+  // TODO: Should output_pair also take a simplex_t argument?
   template<class OutDim, class OutPair>
     void compute_barcodes(OutDim&& output_dim, OutPair&& output_pair) {
       std::vector<diameter_simplex_t> simplices, columns_to_reduce;
