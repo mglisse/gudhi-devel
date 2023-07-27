@@ -1334,4 +1334,9 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
     ripser_auto(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
+// - sparse input -> sparse matrix
+// - euclidean input & threshold -> sparse matrix (don't build dense matrix)
+// - euclidean input & !threshold -> dense matrix
+// - dense matrix & threshold -> sparse matrix
+// - dense matrix & !threshold -> compute minmax, keep dense
 }
