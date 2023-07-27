@@ -65,6 +65,7 @@ template<class vertex_t_, class value_t_>struct DParams {
 template<class DistanceMatrix>
 py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix::value_t max_edge_length, unsigned homology_coeff_field) {
   typedef typename DistanceMatrix::value_t T;
+  // We could put everything in a single vector, and return slices of it, but I don't think there is much advantage.
   std::vector<std::vector<std::array<T, 2>>> dgms;
   {
     py::gil_scoped_release release;
@@ -168,13 +169,3 @@ PYBIND11_MODULE(_ripser, m) {
   m.def("_sparse", sparse<int, float>, py::arg("row"), py::arg("col"), py::arg("data").noconvert(), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_sparse", sparse<int, double>, py::arg("row"), py::arg("col"), py::arg("data"), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
 }
-
-// TODO:
-// * input matrice de distances "low" (et aussi "full"? ou que "full" et on convertit côté python?)
-// * input matrice de distances sparse "coo"
-//
-// - sparse input -> sparse matrix
-// - euclidean input & threshold -> sparse matrix (don't build dense matrix)
-// - euclidean input & !threshold -> dense matrix
-// - dense matrix & threshold -> sparse matrix
-// - dense matrix & !threshold -> compute minmax, keep dense
