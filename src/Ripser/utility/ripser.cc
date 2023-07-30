@@ -75,8 +75,8 @@ struct Ripser_all {
 
   typedef compressed_distance_matrix<Params, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
   typedef compressed_distance_matrix<Params, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
-  typedef sparse_distance_matrix_<Params> sparse_distance_matrix;
-  typedef euclidean_distance_matrix_<Params> euclidean_distance_matrix;
+  typedef Gudhi::ripser::sparse_distance_matrix<Params> sparse_distance_matrix;
+  typedef Gudhi::ripser::euclidean_distance_matrix<Params> euclidean_distance_matrix;
 
   enum file_format {
     LOWER_DISTANCE_MATRIX,

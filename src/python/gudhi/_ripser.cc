@@ -138,7 +138,7 @@ py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int 
     throw std::runtime_error("vertices and filtrations must have the same shape");
 
   typedef DParams<V, T> P;
-  typedef sparse_distance_matrix_<P> Dist;
+  typedef sparse_distance_matrix<P> Dist;
   typedef typename Dist::vertex_diameter_t vertex_diameter_t;
 
   std::optional<py::gil_scoped_release> release_local(std::in_place);
