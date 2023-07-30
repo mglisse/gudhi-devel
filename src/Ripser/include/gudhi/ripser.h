@@ -50,7 +50,7 @@
 // * from branch representative-cycles
 //   - dim 0: trivial
 //   - parametrize a number of functions (like add_coboundary) by the (co)boundary iterator so they can be also used for homology
-//   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style.
+//   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style. I think we have 2 choices: reduce the birth and check which columns we add (only possibility for essential classes, but do we really need to do cohomology first if we are going to do that?), or reduce the death and look at the column after reduction (Ripser(er) chose this).
 // * check out the persistence image branch
 //
 // * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips
