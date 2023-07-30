@@ -43,6 +43,18 @@
 // #define USE_BOOST_HEAP // only useful when heap::push dominates?
 // #define USE_HASHMAP_FOR_SPARSE_DIST_MAT // only useful in cases where edge-collapse is more important?
 
+// TODO:
+// * from branch representative-cocycles
+//   - for vertices: brute force check all vertices that are in the same connected component (could do better, but there is already quadraticness elsewhere in most cases, even the output for dim 0 may be quadratic)
+//   - for others: print_chain just calls iteratively get_pivot on working_reduction_column
+// * from branch representative-cycles
+//   - dim 0: trivial
+//   - parametrize a number of functions (like add_coboundary) by the (co)boundary iterator so they can be also used for homology
+//   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style.
+// * check out the persistence image branch
+//
+// * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips
+
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -1199,6 +1211,7 @@ template <typename Filtration> class persistent_cohomology {
         if (dim < dim_max)
           assemble_columns_to_reduce(simplices, columns_to_reduce, pivot_column_index,
               dim + 1);
+        // If for some odd reason one wanted all the infinite intervals in the last dimension, assemble_columns_to_reduce should give us that.
       }
     }
 };
