@@ -246,7 +246,7 @@ struct compressed_distance_matrix {
 };
 
 template <class Params>
-struct sparse_distance_matrix_ {
+struct sparse_distance_matrix {
   public:
     typedef Tag_sparse category;
     static constexpr bool is_sparse = true;
@@ -284,12 +284,12 @@ struct sparse_distance_matrix_ {
 #endif
 
   public:
-    sparse_distance_matrix_(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
+    sparse_distance_matrix(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
         std::size_t _num_edges = 0)
       : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
 
     template <typename DistanceMatrix>
-      sparse_distance_matrix_(const DistanceMatrix& mat, const value_t threshold)
+      sparse_distance_matrix(const DistanceMatrix& mat, const value_t threshold)
       : neighbors(mat.size()), num_edges(0) {
 
         for (vertex_t i = 0; i < size(); ++i)
@@ -333,13 +333,13 @@ struct sparse_distance_matrix_ {
 
 // Do not feed this directly to ripser (slow), first convert to another matrix type
 template <class Params>
-struct euclidean_distance_matrix_ {
+struct euclidean_distance_matrix {
   public:
     typedef Tag_other category;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
 
-    euclidean_distance_matrix_(std::vector<std::vector<value_t>>&& _points)
+    euclidean_distance_matrix(std::vector<std::vector<value_t>>&& _points)
       : points(std::move(_points)) {
         for (auto p : points) { assert(p.size() == points.front().size()); }
       }
@@ -1289,7 +1289,7 @@ void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t t
 }
 #if 0
 template<class DMParams, class OutDim, class OutPair>
-void ripser_auto(sparse_distance_matrix_<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+void ripser_auto(sparse_distance_matrix<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
 }
 template<class DMParams, compressed_matrix_layout Layout, class OutDim, class OutPair>
@@ -1297,7 +1297,7 @@ void ripser_auto(compressed_distance_matrix<DMParams, Layout> dist, int dim_max,
   typedef typename DMParams::value_t value_t;
   typedef typename DMParams::vertex_t vertex_t;
   if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix_<DMParams> new_dist(dist, threshold);
+    sparse_distance_matrix<DMParams> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
     for (vertex_t i = 0; i < dist.size(); ++i) {
@@ -1316,7 +1316,7 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
   typedef typename DistanceMatrix::value_t value_t;
   typedef TParams2<value_t> P;
   if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix_<P> new_dist(dist, threshold);
+    sparse_distance_matrix<P> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
     compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
@@ -1332,7 +1332,7 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
   if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_sparse>) {
     ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix_<P> new_dist(dist, threshold);
+    sparse_distance_matrix<P> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_dense>) {
     for (vertex_t i = 0; i < dist.size(); ++i) {
