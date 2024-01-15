@@ -130,6 +130,7 @@ class union_find {
     }
 
     void link(vertex_t x, vertex_t y) {
+      // this line is redundant, the caller already does it
       if ((x = find(x)) == (y = find(y))) return;
       if (rank[x] > rank[y])
         parent[y] = x;
