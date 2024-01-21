@@ -78,6 +78,8 @@
 #include <boost/heap/d_ary_heap.hpp>
 #endif
 
+#include <gudhi/uint128.h>
+
 namespace Gudhi::ripser {
 
 #ifdef USE_BOOST_HEAP
@@ -420,6 +422,7 @@ class cns_encoding {
 
   public:
     cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+      static_assert(std::numeric_limits<simplex_t>::radix == 2);
       const int available_bits = std::numeric_limits<simplex_t>::digits;
       simplex_t max_simplex_index = 0;
       for (vertex_t i = 0; i <= n; ++i) {
@@ -479,6 +482,7 @@ class bitfield_encoding {
 
   public:
     bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
+      static_assert(std::numeric_limits<simplex_t>::radix == 2);
       const int available_bits = std::numeric_limits<simplex_t>::digits;
       extra_bits = available_bits - bits_per_vertex * k;
       if (extra_bits < 0)
@@ -501,9 +505,9 @@ class bitfield_encoding {
       assert(k > 0);
       --k;
 #ifdef USE_N_MINUS_K
-      return (idx >> (bits_per_vertex * k)) + k;
+      return static_cast<vertex_t>(idx >> (bits_per_vertex * k)) + k;
 #else
-      return (idx >> (bits_per_vertex * k));
+      return static_cast<vertex_t>(idx >> (bits_per_vertex * k));
 #endif
     }
 
@@ -531,7 +535,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     friend const entry_with_coeff_t& get_entry(const entry_with_coeff_t& e) { return e; }
   };
   simplex_t get_index(const entry_with_coeff_t& e) const { return e.content >> num_bits_for_coeff(); }
-  simplex_t get_coefficient(const entry_with_coeff_t& e) const { return (e.content & (((simplex_t)1 << num_bits_for_coeff()) - 1)) + 1; }
+  coefficient_t get_coefficient(const entry_with_coeff_t& e) const { return static_cast<coefficient_t>(e.content & (((simplex_t)1 << num_bits_for_coeff()) - 1)) + 1; }
   void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) const { assert(c!=0); e.content = (e.content & ((simplex_t)(-1) << num_bits_for_coeff())) | (c - 1); }
   // Should we cache the masks derived from num_bits_for_coeff?
 
@@ -542,7 +546,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     friend const entry_plain_t& get_entry(const entry_plain_t& e) { return e; }
   };
   static simplex_t get_index(const entry_plain_t& i) { return i.index; }
-  static simplex_t get_coefficient(const entry_plain_t& i) { return 1; }
+  static coefficient_t get_coefficient(const entry_plain_t& i) { return 1; }
   static void set_coefficient(entry_plain_t& e, const coefficient_t c) { assert(c==1); }
 
   typedef std::conditional_t<use_coefficients, entry_with_coeff_t, entry_plain_t> entry_t;
@@ -636,7 +640,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
         *out++ = n;
         idx -= simplex_encoding(n, k);
       }
-      *out = idx;
+      *out = static_cast<vertex_t>(idx);
       return out;
     }
 
@@ -1272,14 +1276,13 @@ void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t 
     typedef TParams<use_coefficients, uint64_t, typename DistanceMatrix::value_t> P;
     help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if (bitfield_size <= 128) { // use bitfield-128
-    typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
+    typedef TParams<use_coefficients, Gudhi::numbers::uint128_t, typename DistanceMatrix::value_t> P;
     help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else { // use cns-128
-    typedef TParams<use_coefficients, unsigned __int128, typename DistanceMatrix::value_t> P;
+    typedef TParams<use_coefficients, Gudhi::numbers::uint128_t, typename DistanceMatrix::value_t> P;
     help2<P, cns_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
-  // Does cns-64 have its place on linux?
-  // TODO: on windows, only bitfield-64 and cns-64
+  // Does cns-64 have its place?
 }
 template<class DistanceMatrix, class OutDim, class OutPair>
 void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
