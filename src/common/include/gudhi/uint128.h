@@ -15,12 +15,18 @@
 #include <utility>
 #include <boost/container_hash/hash.hpp>
 
-// GUDHI_DEFINE_FAKE_UINT128 is only used for tests
-#if !defined __SIZEOF_INT128__ && !defined GUDHI_DEFINE_FAKE_UINT128
+// GUDHI_FORCE_FAKE_UINT128 is only used for tests
+#if !defined __SIZEOF_INT128__ || defined GUDHI_FORCE_FAKE_UINT128
 namespace Gudhi::numbers {
-struct fake_uint128 {
-  //Debug
+class fake_uint128 {
+  // Debug
+ #ifdef __SIZEOF_INT128__
   unsigned __int128 native() const { return ((unsigned __int128)high << 64) + low; }
+  #define GUDHI_VERIF(X) GUDHI_CHECK(res.native() == (X), "")
+ #else
+  #define GUDHI_VERIF(X)
+ #endif
+  public:
   constexpr fake_uint128(): high(0), low(0) {}
   constexpr fake_uint128(std::uint64_t a): high(0), low(a) {}
   // Arithmetic
@@ -29,14 +35,14 @@ struct fake_uint128 {
     fake_uint128 res;
     res.low = a.low + b.low;
     res.high = a.high + b.high + (res.low < a.low);
-    assert (res.native() == a.native() + b.native());
+    GUDHI_VERIF (a.native() + b.native());
     return res;
   }
   friend fake_uint128 operator-(fake_uint128 a, fake_uint128 b){
     fake_uint128 res;
     res.low = a.low - b.low;
     res.high = a.high - b.high - (res.low > a.low);
-    assert (res.native() == a.native() - b.native());
+    GUDHI_VERIF (a.native() - b.native());
     return res;
   }
   friend fake_uint128 operator<<(fake_uint128 a, uint8_t b){
@@ -45,7 +51,7 @@ struct fake_uint128 {
     if (b >= 64) { res.low = 0; res.high = a.low << (b-64); }
     else if (b == 0) { res = a; }
     else { res.low = a.low << b; res.high = a.high << b | a.low >> (64-b); }
-    assert (res.native() == a.native() << b);
+    GUDHI_VERIF (a.native() << b);
     return res;
   }
   friend fake_uint128 operator>>(fake_uint128 a, uint8_t b){
@@ -54,21 +60,21 @@ struct fake_uint128 {
     if (b >= 64) { res.high = 0; res.low = a.high >> (b-64); }
     else if (b == 0) { res = a; }
     else { res.high = a.high >> b; res.low = a.low >> b | a.high << (64-b); }
-    assert (res.native() == a.native() >> b);
+    GUDHI_VERIF (a.native() >> b);
     return res;
   }
   friend fake_uint128 operator&(fake_uint128 a, fake_uint128 b){
     fake_uint128 res;
     res.low = a.low & b.low;
     res.high = a.high & b.high;
-    assert (res.native() == (a.native() & b.native()));
+    GUDHI_VERIF (a.native() & b.native());
     return res;
   }
   friend fake_uint128 operator|(fake_uint128 a, fake_uint128 b){
     fake_uint128 res;
     res.low = a.low | b.low;
     res.high = a.high | b.high;
-    assert (res.native() == (a.native() | b.native()));
+    GUDHI_VERIF (a.native() | b.native());
     return res;
   }
   friend fake_uint128 operator~(fake_uint128 a){
@@ -110,10 +116,6 @@ struct fake_uint128 {
     typedef std::pair<std::uint64_t, std::uint64_t> P;
     return boost::hash_value(P(a.high, a.low));
   }
-  //explicit operator std::uint64_t() const {
-  //  GUDHI_CHECK(high == 0, "");
-  //  return low;
-  //}
   template <class T, class=std::enable_if_t<std::is_integral_v<T>>>
   explicit operator T() const {
     GUDHI_CHECK(high == 0 && low <= std::numeric_limits<T>::max(), "");
@@ -121,7 +123,9 @@ struct fake_uint128 {
   }
   private:
   std::uint64_t high, low; // does the order matter?
+ #undef GUDHI_VERIF
 };
+typedef fake_uint128 uint128_t;
 } // namespace Gudhi::numbers
 template<> class std::numeric_limits<Gudhi::numbers::fake_uint128> {
   public:
@@ -135,13 +139,9 @@ template<> class std::numeric_limits<Gudhi::numbers::fake_uint128> {
   static constexpr int radix = 2;
   // etc
 };
-#endif
-
-namespace Gudhi::numbers {
-#ifdef __SIZEOF_INT128__
-typedef unsigned __int128 uint128_t;
 #else
-typedef fake_uint128 uint128_t;
-#endif
+namespace Gudhi::numbers {
+typedef unsigned __int128 uint128_t;
 } // namespace Gudhi::numbers
+#endif
 #endif // GUDHI_UINT128_H_
