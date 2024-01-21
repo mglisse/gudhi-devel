@@ -64,6 +64,7 @@ template<class vertex_t_, class value_t_>struct DParams {
 
 template<class DistanceMatrix>
 py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix::value_t max_edge_length, unsigned homology_coeff_field) {
+  //static_assert(!std::is_lvalue_reference_v<DistanceMatrix>);
   typedef typename DistanceMatrix::value_t T;
   // We could put everything in a single vector, and return slices of it, but I don't think there is much advantage.
   std::vector<std::vector<std::array<T, 2>>> dgms;
