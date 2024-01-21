@@ -1265,6 +1265,7 @@ template<class value_t_> struct TParams2 {
   typedef int vertex_t;
   typedef value_t_ value_t;
 };
+// Choose simplex encoding
 template<bool use_coefficients, class DistanceMatrix, class OutDim, class OutPair>
 void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   auto n = dist.size();
@@ -1284,6 +1285,7 @@ void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t 
   }
   // Does cns-64 have its place?
 }
+// Select hardcoded Z/2Z or runtime Z/pZ
 template<class DistanceMatrix, class OutDim, class OutPair>
 void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   if (modulus == 2)

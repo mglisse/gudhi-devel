@@ -52,3 +52,27 @@ class ChainEncoding<SimplexEncoding> {
   using entry_t=
 }
 ou FiltrationEncoding avec aussi diameter_{simplex,entry} ?
+
+
+----------------------------
+Python
+si on passe juste coordonnées:
+- cdist
+si on passe juste matrice pleine:
+- minmax
+- si hdim>=2: copie (<=minmax) dans vecteur, edge-collapse, ripser-sparse
+- sinon: ripser-dense
+si on passe matrice creuse:
+- ripser-sparse
+si on passe matrice pleine et seuil:
+- si hdim>=2: copie (<=seuil) dans vecteur, edge-collapse, ripser-sparse
+- sinon: ripser-sparse
+
+Q: compter le nombre d'arêtes avant de décider que sparse est mieux que dense ?
+Q: utiliser un kd-tree au lieu de cdist, quand on a un seuil ?
+
+=> pas besoin de gérer directement coordonnées dans ripser. seulement :
+* dense, avec seuil fourni (minmax ou utilisateur)
+* sparse
+
+- avoir une fonction pour convertir dense+seuil -> sparse
