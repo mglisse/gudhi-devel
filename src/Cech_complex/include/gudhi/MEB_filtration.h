@@ -11,6 +11,10 @@
 #ifndef MEB_FILTRATION_H_
 #define MEB_FILTRATION_H_
 
+#include <utility> // pair, move
+#include <vector>
+#include <algorithm> // max
+
 namespace Gudhi::cech_complex {
 
 /**
