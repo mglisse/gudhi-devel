@@ -82,6 +82,14 @@ void assign_MEB_filtration(Kernel&&k, SimplicialComplexForMEB& complex, PointRan
       bool found = false;
       for (auto face_opposite_vertex : complex.boundary_opposite_vertex_simplex_range(sh)) {
         maxf = max(maxf, complex.filtration(face_opposite_vertex.first));
+        // If complex.filtration(face_opposite_vertex.first) < maxf, we could move on to the next face.
+        // We could even go one step further, do a first pass to select the faces with maximum filtration,
+        // and only test those. We may also be able to handle specially the case where there are several.
+        // However,
+        // 1) the distance comparison is not that expensive in the first place;
+        // 2) with Epick_d, this may be more unstable than the current code.
+        // So before doing such a change, we would need to measure a significant performance gain and
+        // convince ourselves that 2) is not too bad, or restrict the change to Epeck_d.
         if (!found) {
           auto key = complex.key(face_opposite_vertex.first);
           Sphere const& sph = cache_[key];
