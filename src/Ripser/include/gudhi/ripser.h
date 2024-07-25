@@ -84,10 +84,10 @@ namespace Gudhi::ripser {
 
 #ifdef USE_BOOST_HEAP
 template <class T, class, class C>
-using heap = boost::heap::d_ary_heap<T, boost::heap::arity<8>, boost::heap::compare<C>>;
+using Heap = boost::heap::d_ary_heap<T, boost::heap::arity<8>, boost::heap::compare<C>>;
 #else
 template <class T, class V, class C>
-struct heap : std::priority_queue<T, V, C> {
+struct Heap : std::priority_queue<T, V, C> {
   typedef std::priority_queue<T, V, C> Base;
   using Base::Base;
   void clear() { this->c.clear(); }
@@ -410,7 +410,7 @@ constexpr int log2up(vertex_t n) {
 }
 
 template <class Params>
-class cns_encoding {
+class Cns_encoding {
   public:
     typedef typename Params::dimension_t dimension_t;
     typedef typename Params::vertex_t vertex_t;
@@ -421,7 +421,7 @@ class cns_encoding {
     int extra_bits;
 
   public:
-    cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
+    Cns_encoding(vertex_t n, dimension_t k) : B(k + 1, std::vector<simplex_t>(n + 1, 0)) {
       static_assert(std::numeric_limits<simplex_t>::radix == 2);
       const int available_bits = std::numeric_limits<simplex_t>::digits;
       simplex_t max_simplex_index = 0;
@@ -470,7 +470,7 @@ class cns_encoding {
 };
 
 template <class Params>
-class bitfield_encoding {
+class Bitfield_encoding {
   public:
     typedef typename Params::dimension_t dimension_t;
     typedef typename Params::vertex_t vertex_t;
@@ -481,7 +481,7 @@ class bitfield_encoding {
     int extra_bits;
 
   public:
-    bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
+    Bitfield_encoding(vertex_t n, dimension_t k) : bits_per_vertex(log2up(n)) {
       static_assert(std::numeric_limits<simplex_t>::radix == 2);
       const int available_bits = std::numeric_limits<simplex_t>::digits;
       extra_bits = available_bits - bits_per_vertex * k;
@@ -514,7 +514,7 @@ class bitfield_encoding {
     int num_extra_bits() const { return extra_bits; }
 };
 
-template <typename DistanceMatrix, typename SimplexEncoding, typename Params> struct rips_filtration {
+template <typename DistanceMatrix, typename SimplexEncoding, typename Params> struct Rips_filtration {
   using size_t = typename Params::size_t;
   using vertex_t = typename SimplexEncoding::vertex_t;
   // static_assert(std::is_same_v<vertex_t, typename DistanceMatrix::vertex_t>); // too strict
@@ -556,14 +556,14 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
 
   // TODO: avoid storing filtp when !use_coefficients (same for equal_index and greater_*)
   struct entry_hash {
-    entry_hash(rips_filtration const& filt) : filtp(&filt) {}
-    rips_filtration const* filtp;
+    entry_hash(Rips_filtration const& filt) : filtp(&filt) {}
+    Rips_filtration const* filtp;
     std::size_t operator()(const entry_t& e) const { return boost::hash<simplex_t>()(filtp->get_index(e)); }
   };
 
   struct equal_index {
-    equal_index(rips_filtration const& filt) : filtp(&filt) {}
-    rips_filtration const* filtp;
+    equal_index(Rips_filtration const& filt) : filtp(&filt) {}
+    Rips_filtration const* filtp;
     bool operator()(const entry_t& e, const entry_t& f) const {
       return filtp->get_index(e) == filtp->get_index(f);
     }
@@ -597,8 +597,8 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   }
 
   template <typename Entry> struct greater_diameter_or_smaller_index {
-    greater_diameter_or_smaller_index(rips_filtration const& filt) : filtp(&filt) {}
-    rips_filtration const* filtp;
+    greater_diameter_or_smaller_index(Rips_filtration const& filt) : filtp(&filt) {}
+    Rips_filtration const* filtp;
     bool operator()(const Entry& a, const Entry& b) const {
       return (get_diameter(a) > get_diameter(b)) ||
         ((get_diameter(a) == get_diameter(b)) && (filtp->get_index(a) < filtp->get_index(b)));
@@ -614,7 +614,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   mutable std::vector<vertex_t> vertices; // we must not have several threads looking at the same complex
   int bits_for_coeff;
 
-  rips_filtration(DistanceMatrix&& _dist, dimension_t _dim_max, value_t _threshold, coefficient_t _modulus)
+  Rips_filtration(DistanceMatrix&& _dist, dimension_t _dim_max, value_t _threshold, coefficient_t _modulus)
     : dist(std::move(_dist)), n(dist.size()),
     dim_max(std::min<vertex_t>(_dim_max, dist.size() - 2)), threshold(_threshold),
     modulus(_modulus), simplex_encoding(n, dim_max + 2), bits_for_coeff(log2up(modulus-1)) {
@@ -698,11 +698,11 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     diameter_entry_t simplex;
     const DistanceMatrix2& dist;
     const SimplexEncoding& simplex_encoding;
-    const rips_filtration& parent; // for n and get_simplex_vertices
+    const Rips_filtration& parent; // for n and get_simplex_vertices
     // at least dist and simplex_encoding are redundant with parent, but using parent.dist and parent.simplex_encoding seems to have a bad impact on performance.
 
     public:
-    Simplex_coboundary_enumerator(const rips_filtration& _parent) : dist(_parent.dist),
+    Simplex_coboundary_enumerator(const Rips_filtration& _parent) : dist(_parent.dist),
     simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
     void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
@@ -755,10 +755,10 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     std::vector<typename std::vector<vertex_diameter_t>::const_reverse_iterator> neighbor_it;
     std::vector<typename std::vector<vertex_diameter_t>::const_reverse_iterator> neighbor_end;
     vertex_diameter_t neighbor;
-    const rips_filtration& parent; // for n and get_simplex_vertices
+    const Rips_filtration& parent; // for n and get_simplex_vertices
 
     public:
-    Simplex_coboundary_enumerator(const rips_filtration& _parent)
+    Simplex_coboundary_enumerator(const Rips_filtration& _parent)
       : dist(_parent.dist),
       simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
@@ -828,10 +828,10 @@ continue_outer:;
       diameter_entry_t simplex;
       dimension_t dim;
       const SimplexEncoding& simplex_encoding;
-      const rips_filtration& parent; // for n, get_max_vertex, compute_diameter
+      const Rips_filtration& parent; // for n, get_max_vertex, compute_diameter
 
     public:
-      simplex_boundary_enumerator(const rips_filtration& _parent)
+      simplex_boundary_enumerator(const Rips_filtration& _parent)
         : simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
       void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
@@ -877,7 +877,7 @@ template <class Key, class T, class H, class E> using hash_map = boost::unordere
 template <class Key, class T, class H, class E> using hash_map = boost::unordered_map<Key, T, H, E>;
 #endif
 
-template <typename Filtration> class persistent_cohomology {
+template <typename Filtration> class Persistent_cohomology {
   using size_t = typename Filtration::size_t;
   using coefficient_t = typename Filtration::coefficient_t;
   using coefficient_storage_t = typename Filtration::coefficient_storage_t;
@@ -912,7 +912,7 @@ template <typename Filtration> class persistent_cohomology {
     return multiplicative_inverse_[c];
   }
   public:
-  persistent_cohomology(Filtration&& _filt, dimension_t _dim_max, coefficient_t _modulus)
+  Persistent_cohomology(Filtration&& _filt, dimension_t _dim_max, coefficient_t _modulus)
     : filt(std::move(_filt)), n(filt.num_vertices()),
     dim_max(std::min<vertex_t>(_dim_max, n - 2)),
     modulus(_modulus),
@@ -1121,7 +1121,7 @@ template <typename Filtration> class persistent_cohomology {
         entry_hash_map& pivot_column_index, const dimension_t dim, OutPair& output_pair) {
       compressed_sparse_matrix reduction_matrix;
       greater_diameter_or_smaller_index<diameter_entry_t> cmp(filt);
-      heap<diameter_entry_t, std::vector<diameter_entry_t>,
+      Heap<diameter_entry_t, std::vector<diameter_entry_t>,
         greater_diameter_or_smaller_index<diameter_entry_t>>
           working_reduction_column(cmp), working_coboundary(cmp);
 
@@ -1245,8 +1245,8 @@ struct Params1 {
 // Trying to write a magic function
 template<class Params, class SimplexEncoding, class DistanceMatrix, class OutDim, class OutPair>
 void help2(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
-  typedef rips_filtration<DistanceMatrix, SimplexEncoding, Params> Filt;
-  typedef persistent_cohomology<Filt> Pcoh;
+  typedef Rips_filtration<DistanceMatrix, SimplexEncoding, Params> Filt;
+  typedef Persistent_cohomology<Filt> Pcoh;
   Filt filt(std::move(dist), dim_max, threshold, modulus);
   Pcoh(std::move(filt), dim_max, modulus).compute_barcodes(output_dim, output_pair);
 }
@@ -1275,13 +1275,13 @@ void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t 
   int bitfield_size = bits_per_vertex * (dim_max + 2) + bits_for_coeff;
   if (bitfield_size <= 64) { // use bitfield-64
     typedef TParams<use_coefficients, uint64_t, typename DistanceMatrix::value_t> P;
-    help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+    help2<P, Bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if (bitfield_size <= 128) { // use bitfield-128
     typedef TParams<use_coefficients, Gudhi::numbers::uint128_t, typename DistanceMatrix::value_t> P;
-    help2<P, bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+    help2<P, Bitfield_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else { // use cns-128
     typedef TParams<use_coefficients, Gudhi::numbers::uint128_t, typename DistanceMatrix::value_t> P;
-    help2<P, cns_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
+    help2<P, Cns_encoding<P>>(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
   // Does cns-64 have its place?
 }
