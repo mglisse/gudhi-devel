@@ -1230,7 +1230,7 @@ struct Params1 {
   typedef float value_t;
   typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
   typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
-  typedef unsigned __int128 simplex_t;
+  typedef Gudhi::numbers::uint128_t simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
   typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
   typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough

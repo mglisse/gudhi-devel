@@ -18,7 +18,7 @@
 // GUDHI_FORCE_FAKE_UINT128 is only used for tests
 #if !defined __SIZEOF_INT128__ || defined GUDHI_FORCE_FAKE_UINT128
 namespace Gudhi::numbers {
-class fake_uint128 {
+class Fake_uint128 {
   // Debug
  #ifdef __SIZEOF_INT128__
   unsigned __int128 native() const { return ((unsigned __int128)high << 64) + low; }
@@ -27,26 +27,26 @@ class fake_uint128 {
   #define GUDHI_VERIF(X)
  #endif
   public:
-  constexpr fake_uint128(): high(0), low(0) {}
-  constexpr fake_uint128(std::uint64_t a): high(0), low(a) {}
+  constexpr Fake_uint128(): high(0), low(0) {}
+  constexpr Fake_uint128(std::uint64_t a): high(0), low(a) {}
   // Arithmetic
   // (multiplication and division are not needed for now)
-  friend fake_uint128 operator+(fake_uint128 a, fake_uint128 b){
-    fake_uint128 res;
+  friend Fake_uint128 operator+(Fake_uint128 a, Fake_uint128 b){
+    Fake_uint128 res;
     res.low = a.low + b.low;
     res.high = a.high + b.high + (res.low < a.low);
     GUDHI_VERIF (a.native() + b.native());
     return res;
   }
-  friend fake_uint128 operator-(fake_uint128 a, fake_uint128 b){
-    fake_uint128 res;
+  friend Fake_uint128 operator-(Fake_uint128 a, Fake_uint128 b){
+    Fake_uint128 res;
     res.low = a.low - b.low;
     res.high = a.high - b.high - (res.low > a.low);
     GUDHI_VERIF (a.native() - b.native());
     return res;
   }
-  friend fake_uint128 operator<<(fake_uint128 a, uint8_t b){
-    fake_uint128 res;
+  friend Fake_uint128 operator<<(Fake_uint128 a, uint8_t b){
+    Fake_uint128 res;
     GUDHI_CHECK(b < 128, "");
     if (b >= 64) { res.low = 0; res.high = a.low << (b-64); }
     else if (b == 0) { res = a; }
@@ -54,8 +54,8 @@ class fake_uint128 {
     GUDHI_VERIF (a.native() << b);
     return res;
   }
-  friend fake_uint128 operator>>(fake_uint128 a, uint8_t b){
-    fake_uint128 res;
+  friend Fake_uint128 operator>>(Fake_uint128 a, uint8_t b){
+    Fake_uint128 res;
     GUDHI_CHECK(b < 128, "");
     if (b >= 64) { res.high = 0; res.low = a.high >> (b-64); }
     else if (b == 0) { res = a; }
@@ -63,56 +63,56 @@ class fake_uint128 {
     GUDHI_VERIF (a.native() >> b);
     return res;
   }
-  friend fake_uint128 operator&(fake_uint128 a, fake_uint128 b){
-    fake_uint128 res;
+  friend Fake_uint128 operator&(Fake_uint128 a, Fake_uint128 b){
+    Fake_uint128 res;
     res.low = a.low & b.low;
     res.high = a.high & b.high;
     GUDHI_VERIF (a.native() & b.native());
     return res;
   }
-  friend fake_uint128 operator|(fake_uint128 a, fake_uint128 b){
-    fake_uint128 res;
+  friend Fake_uint128 operator|(Fake_uint128 a, Fake_uint128 b){
+    Fake_uint128 res;
     res.low = a.low | b.low;
     res.high = a.high | b.high;
     GUDHI_VERIF (a.native() | b.native());
     return res;
   }
-  friend fake_uint128 operator~(fake_uint128 a){
-    fake_uint128 res;
+  friend Fake_uint128 operator~(Fake_uint128 a){
+    Fake_uint128 res;
     res.low = ~a.low;
     res.high = ~a.high;
     return res;
   }
   // In-place arithmetic
-  fake_uint128& operator+=(fake_uint128 a) { *this = *this + a; return *this; }
-  fake_uint128& operator-=(fake_uint128 a) { *this = *this - a; return *this; }
-  fake_uint128& operator++() { if (++low == 0) ++high; return *this; }
-  fake_uint128& operator--() { if (low-- == 0) --high; return *this; }
-  fake_uint128& operator<<=(uint8_t a) { *this = *this << a; return *this; }
-  fake_uint128& operator>>=(uint8_t a) { *this = *this >> a; return *this; }
-  fake_uint128& operator&=(fake_uint128 a) { *this = *this & a; return *this; }
-  fake_uint128& operator|=(fake_uint128 a) { *this = *this | a; return *this; }
+  Fake_uint128& operator+=(Fake_uint128 a) { *this = *this + a; return *this; }
+  Fake_uint128& operator-=(Fake_uint128 a) { *this = *this - a; return *this; }
+  Fake_uint128& operator++() { if (++low == 0) ++high; return *this; }
+  Fake_uint128& operator--() { if (low-- == 0) --high; return *this; }
+  Fake_uint128& operator<<=(uint8_t a) { *this = *this << a; return *this; }
+  Fake_uint128& operator>>=(uint8_t a) { *this = *this >> a; return *this; }
+  Fake_uint128& operator&=(Fake_uint128 a) { *this = *this & a; return *this; }
+  Fake_uint128& operator|=(Fake_uint128 a) { *this = *this | a; return *this; }
   // Comparisons
-  friend bool operator==(fake_uint128 a, fake_uint128 b){
+  friend bool operator==(Fake_uint128 a, Fake_uint128 b){
     return a.low == b.low && a.high == b.high;
   }
-  friend bool operator!=(fake_uint128 a, fake_uint128 b){
+  friend bool operator!=(Fake_uint128 a, Fake_uint128 b){
     return a.low != b.low || a.high != b.high;
   }
-  friend bool operator<(fake_uint128 a, fake_uint128 b){
+  friend bool operator<(Fake_uint128 a, Fake_uint128 b){
     return a.high < b.high || (a.high == b.high && a.low < b.low);
   }
-  friend bool operator>(fake_uint128 a, fake_uint128 b){
+  friend bool operator>(Fake_uint128 a, Fake_uint128 b){
     return a.high > b.high || (a.high == b.high && a.low > b.low);
   }
-  friend bool operator<=(fake_uint128 a, fake_uint128 b){
+  friend bool operator<=(Fake_uint128 a, Fake_uint128 b){
     return a.high < b.high || (a.high == b.high && a.low <= b.low);
   }
-  friend bool operator>=(fake_uint128 a, fake_uint128 b){
+  friend bool operator>=(Fake_uint128 a, Fake_uint128 b){
     return a.high > b.high || (a.high == b.high && a.low >= b.low);
   }
   // Misc
-  friend std::size_t hash_value(fake_uint128 a) {
+  friend std::size_t hash_value(Fake_uint128 a) {
     typedef std::pair<std::uint64_t, std::uint64_t> P;
     return boost::hash_value(P(a.high, a.low));
   }
@@ -125,9 +125,9 @@ class fake_uint128 {
   std::uint64_t high, low; // does the order matter?
  #undef GUDHI_VERIF
 };
-typedef fake_uint128 uint128_t;
+typedef Fake_uint128 uint128_t;
 } // namespace Gudhi::numbers
-template<> class std::numeric_limits<Gudhi::numbers::fake_uint128> {
+template<> class std::numeric_limits<Gudhi::numbers::Fake_uint128> {
   public:
   static constexpr bool is_specialized = true;
   static constexpr bool is_signed = false;
