@@ -50,7 +50,7 @@ struct Params1 {
   typedef std::size_t size_t;
   typedef float value_t;
   typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
-  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
+  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<Compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
   typedef unsigned __int128 simplex_t; // FIXME: don't try to use that on windows...
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
   typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
@@ -73,10 +73,10 @@ struct Ripser_all {
   typedef typename Params::coefficient_t coefficient_t;
   static constexpr bool use_coefficients = Params::use_coefficients;
 
-  typedef compressed_distance_matrix<Params, LOWER_TRIANGULAR> compressed_lower_distance_matrix;
-  typedef compressed_distance_matrix<Params, UPPER_TRIANGULAR> compressed_upper_distance_matrix;
-  typedef Gudhi::ripser::sparse_distance_matrix<Params> sparse_distance_matrix;
-  typedef Gudhi::ripser::euclidean_distance_matrix<Params> euclidean_distance_matrix;
+  typedef Compressed_distance_matrix<Params, LOWER_TRIANGULAR> Compressed_lower_distance_matrix;
+  typedef Compressed_distance_matrix<Params, UPPER_TRIANGULAR> Compressed_upper_distance_matrix;
+  typedef Gudhi::ripser::Sparse_distance_matrix<Params> Sparse_distance_matrix;
+  typedef Gudhi::ripser::Euclidean_distance_matrix<Params> Euclidean_distance_matrix;
 
   enum file_format {
     LOWER_DISTANCE_MATRIX,
@@ -99,7 +99,7 @@ struct Ripser_all {
     return result;
   }
 
-  euclidean_distance_matrix read_point_cloud(std::istream& input_stream) {
+  Euclidean_distance_matrix read_point_cloud(std::istream& input_stream) {
     std::vector<std::vector<value_t>> points;
 
     std::string line;
@@ -116,7 +116,7 @@ struct Ripser_all {
     }
 
     std::size_t d = points.front().size();
-    euclidean_distance_matrix eucl_dist(std::move(points));
+    Euclidean_distance_matrix eucl_dist(std::move(points));
     vertex_t n = eucl_dist.size();
     std::cout << "point cloud with " << n << " points in dimension "
       << d << std::endl;
@@ -124,8 +124,8 @@ struct Ripser_all {
     return eucl_dist;
   }
 
-  sparse_distance_matrix read_sparse_distance_matrix(std::istream& input_stream) {
-    typedef typename sparse_distance_matrix::vertex_diameter_t vertex_diameter_t;
+  Sparse_distance_matrix read_sparse_distance_matrix(std::istream& input_stream) {
+    typedef typename Sparse_distance_matrix::vertex_diameter_t vertex_diameter_t;
     std::vector<std::vector<vertex_diameter_t>> neighbors;
     size_t num_edges = 0;
 
@@ -151,10 +151,10 @@ struct Ripser_all {
     for (size_t i = 0; i < neighbors.size(); ++i)
       std::sort(neighbors[i].begin(), neighbors[i].end());
 
-    return sparse_distance_matrix(std::move(neighbors), num_edges);
+    return Sparse_distance_matrix(std::move(neighbors), num_edges);
   }
 
-  compressed_lower_distance_matrix read_lower_distance_matrix(std::istream& input_stream) {
+  Compressed_lower_distance_matrix read_lower_distance_matrix(std::istream& input_stream) {
     std::vector<value_t> distances;
     value_t value;
     while (input_stream >> value) {
@@ -162,10 +162,10 @@ struct Ripser_all {
       input_stream.ignore();
     }
 
-    return compressed_lower_distance_matrix(std::move(distances));
+    return Compressed_lower_distance_matrix(std::move(distances));
   }
 
-  compressed_lower_distance_matrix read_upper_distance_matrix(std::istream& input_stream) {
+  Compressed_lower_distance_matrix read_upper_distance_matrix(std::istream& input_stream) {
     std::vector<value_t> distances;
     value_t value;
     while (input_stream >> value) {
@@ -173,10 +173,10 @@ struct Ripser_all {
       input_stream.ignore();
     }
 
-    return compressed_lower_distance_matrix(compressed_upper_distance_matrix(std::move(distances)));
+    return Compressed_lower_distance_matrix(Compressed_upper_distance_matrix(std::move(distances)));
   }
 
-  compressed_lower_distance_matrix read_distance_matrix(std::istream& input_stream) {
+  Compressed_lower_distance_matrix read_distance_matrix(std::istream& input_stream) {
     std::vector<value_t> distances;
 
     std::string line;
@@ -189,10 +189,10 @@ struct Ripser_all {
       }
     }
 
-    return compressed_lower_distance_matrix(std::move(distances));
+    return Compressed_lower_distance_matrix(std::move(distances));
   }
 
-  compressed_lower_distance_matrix read_dipha(std::istream& input_stream) {
+  Compressed_lower_distance_matrix read_dipha(std::istream& input_stream) {
     if (read<int64_t>(input_stream) != 8067171840) {
       std::cerr << "input is not a Dipha file (magic number: 8067171840)" << std::endl;
       exit(-1);
@@ -214,16 +214,16 @@ struct Ripser_all {
         else
           read<double>(input_stream);
 
-    return compressed_lower_distance_matrix(std::move(distances));
+    return Compressed_lower_distance_matrix(std::move(distances));
   }
 
-  compressed_lower_distance_matrix read_binary(std::istream& input_stream) {
+  Compressed_lower_distance_matrix read_binary(std::istream& input_stream) {
     std::vector<value_t> distances;
     while (!input_stream.eof()) distances.push_back(read<value_t>(input_stream));
-    return compressed_lower_distance_matrix(std::move(distances));
+    return Compressed_lower_distance_matrix(std::move(distances));
   }
 
-  compressed_lower_distance_matrix read_file(std::istream& input_stream, const file_format format) {
+  Compressed_lower_distance_matrix read_file(std::istream& input_stream, const file_format format) {
     switch (format) {
       case LOWER_DISTANCE_MATRIX:
         return read_lower_distance_matrix(input_stream);
@@ -351,7 +351,7 @@ struct Ripser_all {
         std::cout << " [" << birth << "," << death << ")" << std::endl;
     };
     if (format == SPARSE) {
-      sparse_distance_matrix dist =
+      Sparse_distance_matrix dist =
         read_sparse_distance_matrix(filename ? file_stream : std::cin);
       std::cout << "sparse distance matrix with " << dist.size() << " points and "
         << dist.num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
@@ -359,10 +359,10 @@ struct Ripser_all {
 
       ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
     } else if (format == POINT_CLOUD && threshold < std::numeric_limits<value_t>::max()) {
-      sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
+      Sparse_distance_matrix dist(read_point_cloud(filename ? file_stream : std::cin), threshold);
       ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
     } else {
-      compressed_lower_distance_matrix dist =
+      Compressed_lower_distance_matrix dist =
         read_file(filename ? file_stream : std::cin, format);
 
       value_t min = std::numeric_limits<value_t>::infinity(),
@@ -396,7 +396,7 @@ struct Ripser_all {
           << num_edges << "/" << (dist.size() * (dist.size() - 1)) / 2 << " entries"
           << std::endl;
 
-        ripser(sparse_distance_matrix(std::move(dist), threshold), dim_max, threshold, modulus, output_dim, output_pair);
+        ripser(Sparse_distance_matrix(std::move(dist), threshold), dim_max, threshold, modulus, output_dim, output_pair);
       }
     }
     return 0;

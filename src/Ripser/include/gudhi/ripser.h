@@ -54,6 +54,10 @@
 // * check out the persistence image branch
 //
 // * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips
+//
+// * assert -> GUDHI_*
+//   INDICATE_PROGRESS -> GUDHI_INDICATE_PROGRESS
+//   etc
 
 #include <algorithm>
 #include <cassert>
@@ -95,14 +99,14 @@ struct Heap : std::priority_queue<T, V, C> {
 #endif
 
 template<class vertex_t_>
-class union_find {
+class Union_find {
   public:
     typedef vertex_t_ vertex_t;
   private:
     std::vector<vertex_t> parent;
     std::vector<uint8_t> rank;
   public:
-    union_find(const vertex_t n) : parent(n), rank(n, 0) {
+    Union_find(const vertex_t n) : parent(n), rank(n, 0) {
       for (vertex_t i = 0; i < n; ++i) parent[i] = i;
     }
 
@@ -174,12 +178,12 @@ std::vector<coefficient_storage_t> multiplicative_inverse_vector(const coefficie
 
 #ifdef INDICATE_PROGRESS
 constexpr std::chrono::milliseconds time_step(40);
-#endif
 constexpr const char* clear_line="\r\033[K";
+#endif
 
 /* concept DistanceMatrix
 struct DistanceMatrix {
-  typedef category;
+  typedef Category;
   typedef vertex_t;
   typedef value_t;
   value_t operator()(vertex_t i, vertex_t j) const;
@@ -194,12 +198,12 @@ class Tag_dense {}; // Use directly, iterate on vertices
 class Tag_sparse {}; // Use directly, iterate on edges
 class Tag_other {}; // Could use directly as dense, but prefer converting it.
 
-enum compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
+enum Compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
-template <class Params, compressed_matrix_layout Layout>
-struct compressed_distance_matrix {
+template <class Params, Compressed_matrix_layout Layout>
+struct Compressed_distance_matrix {
   public:
-    typedef Tag_dense category;
+    typedef Tag_dense Category;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
     std::vector<value_t> distances; // TODO: private
@@ -207,14 +211,14 @@ struct compressed_distance_matrix {
     std::vector<value_t*> rows; // Surprisingly, this is more efficient than computing i*(i-1)/2
 
   public:
-    compressed_distance_matrix(std::vector<value_t>&& _distances)
+    Compressed_distance_matrix(std::vector<value_t>&& _distances)
       : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
         assert(distances.size() == (std::size_t)size() * (size() - 1) / 2);
         init_rows();
       }
 
     template <typename DistanceMatrix>
-      compressed_distance_matrix(const DistanceMatrix& mat)
+      Compressed_distance_matrix(const DistanceMatrix& mat)
       : distances(static_cast<std::size_t>(mat.size()) * (mat.size() - 1) / 2), rows(mat.size()) { // vertex_t is meant for vertices. Using it for edges could be unsafe, so we cast to size_t.
         init_rows();
 
@@ -249,9 +253,9 @@ struct compressed_distance_matrix {
 };
 
 template <class Params>
-struct sparse_distance_matrix {
+struct Sparse_distance_matrix {
   public:
-    typedef Tag_sparse category;
+    typedef Tag_sparse Category;
     static constexpr bool is_sparse = true;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
@@ -287,12 +291,12 @@ struct sparse_distance_matrix {
 #endif
 
   public:
-    sparse_distance_matrix(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
+    Sparse_distance_matrix(std::vector<std::vector<vertex_diameter_t>>&& _neighbors,
         std::size_t _num_edges = 0)
       : neighbors(std::move(_neighbors)), num_edges(_num_edges) {init();}
 
     template <typename DistanceMatrix>
-      sparse_distance_matrix(const DistanceMatrix& mat, const value_t threshold)
+      Sparse_distance_matrix(const DistanceMatrix& mat, const value_t threshold)
       : neighbors(mat.size()), num_edges(0) {
 
         for (vertex_t i = 0; i < size(); ++i)
@@ -336,13 +340,13 @@ struct sparse_distance_matrix {
 
 // Do not feed this directly to ripser (slow), first convert to another matrix type
 template <class Params>
-struct euclidean_distance_matrix {
+struct Euclidean_distance_matrix {
   public:
-    typedef Tag_other category;
+    typedef Tag_other Category;
     typedef typename Params::vertex_t vertex_t;
     typedef typename Params::value_t value_t;
 
-    euclidean_distance_matrix(std::vector<std::vector<value_t>>&& _points)
+    Euclidean_distance_matrix(std::vector<std::vector<value_t>>&& _points)
       : points(std::move(_points)) {
         for (auto p : points) { assert(p.size() == points.front().size()); }
       }
@@ -361,11 +365,11 @@ struct euclidean_distance_matrix {
 };
 
 // The gratuitous restrictions on what can be specialized in C++ are annoying.
-template <class DistanceMatrix, class=std::bool_constant<true>> struct is_sparse_impl : std::bool_constant<false> {};
-template <class DistanceMatrix> struct is_sparse_impl<DistanceMatrix, std::bool_constant<DistanceMatrix::is_sparse>> : std::bool_constant<true> {};
-template <class DistanceMatrix> constexpr bool is_sparse () { return is_sparse_impl<DistanceMatrix>::value; }
+template <class DistanceMatrix, class=std::bool_constant<true>> struct Is_sparse_impl : std::bool_constant<false> {};
+template <class DistanceMatrix> struct Is_sparse_impl<DistanceMatrix, std::bool_constant<DistanceMatrix::is_sparse>> : std::bool_constant<true> {};
+template <class DistanceMatrix> constexpr bool is_sparse () { return Is_sparse_impl<DistanceMatrix>::value; }
 
-template <typename ValueType> class compressed_sparse_matrix_ {
+template <typename ValueType> class Compressed_sparse_matrix_ {
   std::vector<size_t> bounds;
   std::vector<ValueType> entries;
 
@@ -554,15 +558,15 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
 
   static_assert(sizeof(entry_t) == sizeof(simplex_t), "size of entry_t is not the same as simplex_t");
 
-  // TODO: avoid storing filtp when !use_coefficients (same for equal_index and greater_*)
-  struct entry_hash {
-    entry_hash(Rips_filtration const& filt) : filtp(&filt) {}
+  // TODO: avoid storing filtp when !use_coefficients (same for Equal_index and greater_*)
+  struct Entry_hash {
+    Entry_hash(Rips_filtration const& filt) : filtp(&filt) {}
     Rips_filtration const* filtp;
     std::size_t operator()(const entry_t& e) const { return boost::hash<simplex_t>()(filtp->get_index(e)); }
   };
 
-  struct equal_index {
-    equal_index(Rips_filtration const& filt) : filtp(&filt) {}
+  struct Equal_index {
+    Equal_index(Rips_filtration const& filt) : filtp(&filt) {}
     Rips_filtration const* filtp;
     bool operator()(const entry_t& e, const entry_t& f) const {
       return filtp->get_index(e) == filtp->get_index(f);
@@ -596,8 +600,8 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     return diameter_entry_t(get_diameter(diameter_index), make_entry(get_index(diameter_index), coefficient));
   }
 
-  template <typename Entry> struct greater_diameter_or_smaller_index {
-    greater_diameter_or_smaller_index(Rips_filtration const& filt) : filtp(&filt) {}
+  template <typename Entry> struct Greater_diameter_or_smaller_index {
+    Greater_diameter_or_smaller_index(Rips_filtration const& filt) : filtp(&filt) {}
     Rips_filtration const* filtp;
     bool operator()(const Entry& a, const Entry& b) const {
       return (get_diameter(a) > get_diameter(b)) ||
@@ -658,7 +662,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   }
 
   std::vector<diameter_simplex_t> get_edges() {
-    if constexpr (!std::is_same_v<typename DistanceMatrix::category, Tag_sparse>) { // compressed_lower_distance_matrix
+    if constexpr (!std::is_same_v<typename DistanceMatrix::Category, Tag_sparse>) { // Compressed_lower_distance_matrix
       std::vector<diameter_simplex_t> edges;
       std::vector<vertex_t> vertices(2);
       // TODO: it would be convenient to have DistanceMatrix provide a range of neighbors at dist<=threshold even in the dense case (as a filtered_range)
@@ -678,7 +682,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
       }
 #endif
       return edges;
-    } else { // sparse_distance_matrix
+    } else { // Sparse_distance_matrix
       std::vector<diameter_simplex_t> edges;
       for (vertex_t i = 0; i < n; ++i)
         for (auto n : dist.neighbors[i]) {
@@ -690,7 +694,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   }
 
   // TODO: document in what way (if any) the order matters
-  template<class DistanceMatrix2, class=typename DistanceMatrix2::category> class Simplex_coboundary_enumerator { // compressed_lower_distance_matrix
+  template<class DistanceMatrix2, class=typename DistanceMatrix2::Category> class Simplex_coboundary_enumerator_ { // Compressed_lower_distance_matrix
     simplex_t idx_below, idx_above;
     vertex_t j;
     dimension_t k;
@@ -702,7 +706,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     // at least dist and simplex_encoding are redundant with parent, but using parent.dist and parent.simplex_encoding seems to have a bad impact on performance.
 
     public:
-    Simplex_coboundary_enumerator(const Rips_filtration& _parent) : dist(_parent.dist),
+    Simplex_coboundary_enumerator_(const Rips_filtration& _parent) : dist(_parent.dist),
     simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
     void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
@@ -744,7 +748,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     }
   };
 
-  template <class DistanceMatrix2> class Simplex_coboundary_enumerator<DistanceMatrix2, Tag_sparse> {
+  template <class DistanceMatrix2> class Simplex_coboundary_enumerator_<DistanceMatrix2, Tag_sparse> {
     typedef typename DistanceMatrix2::vertex_diameter_t vertex_diameter_t;
     simplex_t idx_below, idx_above;
     dimension_t k;
@@ -758,7 +762,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
     const Rips_filtration& parent; // for n and get_simplex_vertices
 
     public:
-    Simplex_coboundary_enumerator(const Rips_filtration& _parent)
+    Simplex_coboundary_enumerator_(const Rips_filtration& _parent)
       : dist(_parent.dist),
       simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
@@ -818,9 +822,9 @@ continue_outer:;
     }
   };
 
-  typedef Simplex_coboundary_enumerator<DistanceMatrix> simplex_coboundary_enumerator;
+  typedef Simplex_coboundary_enumerator_<DistanceMatrix> Simplex_coboundary_enumerator;
 
-  class simplex_boundary_enumerator {
+  class Simplex_boundary_enumerator {
     private:
       simplex_t idx_below, idx_above;
       vertex_t j;
@@ -831,7 +835,7 @@ continue_outer:;
       const Rips_filtration& parent; // for n, get_max_vertex, compute_diameter
 
     public:
-      simplex_boundary_enumerator(const Rips_filtration& _parent)
+      Simplex_boundary_enumerator(const Rips_filtration& _parent)
         : simplex_encoding(_parent.simplex_encoding), parent(_parent) {}
 
       void set_simplex(const diameter_entry_t _simplex, const dimension_t _dim) {
@@ -872,9 +876,9 @@ continue_outer:;
 };
 
 #if BOOST_VERSION >= 108100
-template <class Key, class T, class H, class E> using hash_map = boost::unordered_flat_map<Key, T, H, E>;
+template <class Key, class T, class H, class E> using Hash_map = boost::unordered_flat_map<Key, T, H, E>;
 #else
-template <class Key, class T, class H, class E> using hash_map = boost::unordered_map<Key, T, H, E>;
+template <class Key, class T, class H, class E> using Hash_map = boost::unordered_map<Key, T, H, E>;
 #endif
 
 template <typename Filtration> class Persistent_cohomology {
@@ -888,14 +892,14 @@ template <typename Filtration> class Persistent_cohomology {
   using diameter_simplex_t = typename Filtration::diameter_simplex_t;
   using entry_t = typename Filtration::entry_t;
   using diameter_entry_t = typename Filtration::diameter_entry_t;
-  using entry_hash = typename Filtration::entry_hash;
-  using equal_index = typename Filtration::equal_index;
-  using simplex_boundary_enumerator = typename Filtration::simplex_boundary_enumerator;
-  using simplex_coboundary_enumerator = typename Filtration::simplex_coboundary_enumerator;
-  template<class T>using greater_diameter_or_smaller_index = typename Filtration::template greater_diameter_or_smaller_index<T>;
+  using Entry_hash = typename Filtration::Entry_hash;
+  using Equal_index = typename Filtration::Equal_index;
+  using Simplex_boundary_enumerator = typename Filtration::Simplex_boundary_enumerator;
+  using Simplex_coboundary_enumerator = typename Filtration::Simplex_coboundary_enumerator;
+  template<class T>using Greater_diameter_or_smaller_index = typename Filtration::template Greater_diameter_or_smaller_index<T>;
 
-  typedef compressed_sparse_matrix_<diameter_entry_t> compressed_sparse_matrix;
-  typedef hash_map<entry_t, size_t, entry_hash, equal_index> entry_hash_map;
+  typedef Compressed_sparse_matrix_<diameter_entry_t> Compressed_sparse_matrix;
+  typedef Hash_map<entry_t, size_t, Entry_hash, Equal_index> entry_hash_map;
 
   Filtration filt;
   const vertex_t n;
@@ -904,9 +908,9 @@ template <typename Filtration> class Persistent_cohomology {
   const std::vector<coefficient_storage_t> multiplicative_inverse_;
   mutable std::vector<diameter_entry_t> cofacet_entries;
   mutable std::vector<vertex_t> vertices;
-  simplex_boundary_enumerator facets;
+  Simplex_boundary_enumerator facets;
   // Creating a new one in each function that needs it wastes a bit of time, but we may need 2 at the same time.
-  simplex_coboundary_enumerator cofacets1, cofacets2;
+  Simplex_coboundary_enumerator cofacets1, cofacets2;
 
   coefficient_t multiplicative_inverse(coefficient_t c) const {
     return multiplicative_inverse_[c];
@@ -1007,7 +1011,7 @@ template <typename Filtration> class Persistent_cohomology {
 #endif
 
     std::sort(columns_to_reduce.begin(), columns_to_reduce.end(),
-        greater_diameter_or_smaller_index<diameter_simplex_t>(filt));
+        Greater_diameter_or_smaller_index<diameter_simplex_t>(filt));
 #ifdef INDICATE_PROGRESS
     std::cerr << clear_line << std::flush;
 #endif
@@ -1016,11 +1020,11 @@ template <typename Filtration> class Persistent_cohomology {
   template<class OutPair>
     void compute_dim_0_pairs(std::vector<diameter_simplex_t>& edges,
         std::vector<diameter_simplex_t>& columns_to_reduce, OutPair& output_pair) {
-      union_find<vertex_t> dset(n);
+      Union_find<vertex_t> dset(n);
 
       edges = filt.get_edges();
       std::sort(edges.rbegin(), edges.rend(),
-          greater_diameter_or_smaller_index<diameter_simplex_t>(filt));
+          Greater_diameter_or_smaller_index<diameter_simplex_t>(filt));
       std::vector<vertex_t> vertices_of_edge(2);
       for (auto e : edges) {
         // Should we work with pairs of vertices instead of edges, to skip get_simplex_vertices?
@@ -1058,6 +1062,7 @@ template <typename Filtration> class Persistent_cohomology {
   }
 
   template <typename Column> std::optional<diameter_entry_t> get_pivot(Column& column) {
+    // We could look for the pivot without needing to push it back, but it does not seem to help in benchmarks.
     std::optional<diameter_entry_t> result = pop_pivot(column);
     if (result) column.push(*result);
     return result;
@@ -1102,7 +1107,7 @@ template <typename Filtration> class Persistent_cohomology {
 
   // add an already reduced column, i.e. add all the simplex coboundaries that were involved in that reduction
   template <typename Column>
-    void add_coboundary(compressed_sparse_matrix& reduction_matrix,
+    void add_coboundary(Compressed_sparse_matrix& reduction_matrix,
         const std::vector<diameter_simplex_t>& columns_to_reduce,
         const size_t index_column_to_add, const coefficient_t factor,
         const dimension_t dim, Column& working_reduction_column,
@@ -1119,10 +1124,10 @@ template <typename Filtration> class Persistent_cohomology {
   template<class OutPair>
     void compute_pairs(const std::vector<diameter_simplex_t>& columns_to_reduce,
         entry_hash_map& pivot_column_index, const dimension_t dim, OutPair& output_pair) {
-      compressed_sparse_matrix reduction_matrix;
-      greater_diameter_or_smaller_index<diameter_entry_t> cmp(filt);
+      Compressed_sparse_matrix reduction_matrix;
+      Greater_diameter_or_smaller_index<diameter_entry_t> cmp(filt);
       Heap<diameter_entry_t, std::vector<diameter_entry_t>,
-        greater_diameter_or_smaller_index<diameter_entry_t>>
+        Greater_diameter_or_smaller_index<diameter_entry_t>>
           working_reduction_column(cmp), working_coboundary(cmp);
 
 #ifdef INDICATE_PROGRESS
@@ -1224,12 +1229,12 @@ template <typename Filtration> class Persistent_cohomology {
 // An example of what Params can be
 #if 0
 struct Params1 {
-  // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a hash_map.
+  // size_t (not always from Params...) is used for counting (ok) and storage for the index of columns in a Hash_map.
   // To gain on a pair<entry_t,size_t> by reducing size_t, simplex_t has to be smaller than size_t I guess, which is very small, not worth it.
   typedef std::size_t size_t;
   typedef float value_t;
   typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
-  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
+  typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator_<Compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
   typedef Gudhi::numbers::uint128_t simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
   typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
@@ -1295,15 +1300,15 @@ void ripser(DistanceMatrix dist, int dim_max, typename DistanceMatrix::value_t t
 }
 #if 0
 template<class DMParams, class OutDim, class OutPair>
-void ripser_auto(sparse_distance_matrix<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+void ripser_auto(Sparse_distance_matrix<DMParams> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
 }
-template<class DMParams, compressed_matrix_layout Layout, class OutDim, class OutPair>
-void ripser_auto(compressed_distance_matrix<DMParams, Layout> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
+template<class DMParams, Compressed_matrix_layout Layout, class OutDim, class OutPair>
+void ripser_auto(Compressed_distance_matrix<DMParams, Layout> dist, int dim_max, typename DMParams::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   typedef typename DMParams::value_t value_t;
   typedef typename DMParams::vertex_t vertex_t;
   if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix<DMParams> new_dist(dist, threshold);
+    Sparse_distance_matrix<DMParams> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
     for (vertex_t i = 0; i < dist.size(); ++i) {
@@ -1322,10 +1327,10 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
   typedef typename DistanceMatrix::value_t value_t;
   typedef TParams2<value_t> P;
   if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix<P> new_dist(dist, threshold);
+    Sparse_distance_matrix<P> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
-    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
+    Compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
@@ -1335,12 +1340,12 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
   typedef typename DistanceMatrix::vertex_t vertex_t;
   typedef typename DistanceMatrix::value_t value_t;
   typedef TParams2<value_t> P;
-  if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_sparse>) {
+  if constexpr (std::is_same_v<typename DistanceMatrix::Category, Tag_sparse>) {
     ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else if (threshold < std::numeric_limits<value_t>::max()) { // or infinity()
-    sparse_distance_matrix<P> new_dist(dist, threshold);
+    Sparse_distance_matrix<P> new_dist(dist, threshold);
     ripser(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
-  } else if constexpr (std::is_same_v<typename DistanceMatrix::category, Tag_dense>) {
+  } else if constexpr (std::is_same_v<typename DistanceMatrix::Category, Tag_dense>) {
     for (vertex_t i = 0; i < dist.size(); ++i) {
       value_t r_i = -std::numeric_limits<value_t>::infinity();
       for (vertex_t j = 0; j < dist.size(); ++j)
@@ -1350,7 +1355,7 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
     }
     ripser(std::move(dist), dim_max, threshold, modulus, output_dim, output_pair);
   } else {
-    compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
+    Compressed_distance_matrix<P, LOWER_TRIANGULAR> new_dist(dist);
     ripser_auto(std::move(new_dist), dim_max, threshold, modulus, output_dim, output_pair);
   }
 }
