@@ -148,6 +148,7 @@ py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int 
     neighbors[is(e)].emplace_back(js(e), fs(e));
     neighbors[js(e)].emplace_back(is(e), fs(e));
   }
+  // We could easily parallelize this loop, but it is unlikely to be worth it.
   for (size_t i = 0; i < neighbors.size(); ++i)
     std::sort(neighbors[i].begin(), neighbors[i].end());
   Dist dist(std::move(neighbors));
