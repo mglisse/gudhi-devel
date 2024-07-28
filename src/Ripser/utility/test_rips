@@ -1,7 +1,10 @@
 #!/usr/bin/zsh
 #set -e
 #with -O3 -march=native and g++ 12 or 13, the result slightly differs (order, rounding). That's suspicious, but ok if the difference is just that.
-g++-snapshot ripser.cc -O2 -DNDEBUG -Wall -g `gudhi-includes` `boost-includes` || exit -1
+#g++-snapshot ripser.cc -O2 -DNDEBUG -Wall -g `gudhi-includes` `boost-includes` || exit -1
+export PATH=/usr/lib/ccache:"$PATH"
+g++-14 ripser.cc -c -O2 -DNDEBUG -Wall -g `gudhi-includes` `boost-includes` || exit -1
+g++-14 ripser.o -O2 -g || exit -1
 #g++-snapshot ripser.cc -O2 -Wall -g `gudhi-includes` `boost-includes` || exit -1
 # push
 time ./a.out --format point-cloud ~/repos/ripser/examples/o3_1024.txt >! /tmp/new1

@@ -53,7 +53,7 @@
 //   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style. I think we have 2 choices: reduce the birth and check which columns we add (only possibility for essential classes, but do we really need to do cohomology first if we are going to do that?), or reduce the death and look at the column after reduction (Ripser(er) chose this).
 // * check out the persistence image branch
 //
-// * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips
+// * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips. cf scikit-tda
 //
 // * assert -> GUDHI_*
 //   INDICATE_PROGRESS -> GUDHI_INDICATE_PROGRESS
@@ -197,6 +197,34 @@ struct DistanceMatrix {
 class Tag_dense {}; // Use directly, iterate on vertices
 class Tag_sparse {}; // Use directly, iterate on edges
 class Tag_other {}; // Could use directly as dense, but prefer converting it.
+
+template <class Params>
+struct Full_distance_matrix {
+  public:
+    typedef Tag_dense Category;
+    typedef typename Params::vertex_t vertex_t;
+    typedef typename Params::value_t value_t;
+    std::vector<value_t> distances; // TODO: private
+  private:
+    vertex_t n;
+  public:
+    //Full_distance_matrix(std::vector<value_t>&& _distances)
+    //  : distances(std::move(_distances)), n(std::sqrt(_distances.size())) {}
+
+    template <typename DistanceMatrix>
+      Full_distance_matrix(const DistanceMatrix& mat)
+      : distances(static_cast<std::size_t>(mat.size()) * mat.size()), n(mat.size()) { // vertex_t is meant for vertices. Using it for edges could be unsafe, so we cast to size_t.
+        for (vertex_t i = 0; i < size(); ++i)
+          for (vertex_t j = 0; j < size(); ++j)
+            distances[i * n + j] = mat(i, j); // If mat::operator() involves computations, should we try to take advantage of the symmetry?
+      }
+
+    // Confusing: why is the order j,i significantly faster than i,j?
+    value_t operator()(const vertex_t j, const vertex_t i) const {
+      return distances[i * n + j];
+    }
+    vertex_t size() const { return n; }
+};
 
 enum Compressed_matrix_layout { LOWER_TRIANGULAR, UPPER_TRIANGULAR };
 
@@ -734,6 +762,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
         assert(k != -1);
       }
       value_t cofacet_diameter = get_diameter(simplex);
+      // The order of j and i matters for performance
       for (vertex_t i : vertices) cofacet_diameter = std::max(cofacet_diameter, dist(j, i));
       simplex_t cofacet_index = idx_above + simplex_encoding(j--, k + 1) + idx_below;
       coefficient_t cofacet_coefficient = parent.get_coefficient(simplex);

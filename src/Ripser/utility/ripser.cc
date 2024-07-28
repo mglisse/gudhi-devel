@@ -51,7 +51,7 @@ struct Params1 {
   typedef float value_t;
   typedef int8_t dimension_t; // Does it need to be signed? Experimentally no.
   typedef int vertex_t; // Currently needs to be signed for Simplex_coboundary_enumerator<Compressed_lower_distance_matrix>::has_next. Reducing to int16_t helps perf a bit.
-  typedef unsigned __int128 simplex_t; // FIXME: don't try to use that on windows...
+  // typedef Gudhi::numbers::uint128_t simplex_t;
   // We could introduce a smaller edge_t, but it is not trivial to separate and probably not worth it
   typedef uint16_t coefficient_storage_t; // For the table of multiplicative inverses
   typedef uint_least32_t coefficient_t; // We need x * y % z to work, but promotion from uint16_t to int is not enough
@@ -69,10 +69,11 @@ struct Ripser_all {
   typedef typename Params::value_t value_t;
   typedef typename Params::dimension_t dimension_t;
   typedef typename Params::vertex_t vertex_t;
-  typedef typename Params::simplex_t simplex_t;
+  //typedef typename Params::simplex_t simplex_t;
   typedef typename Params::coefficient_t coefficient_t;
-  static constexpr bool use_coefficients = Params::use_coefficients;
+  //static constexpr bool use_coefficients = Params::use_coefficients;
 
+  typedef Gudhi::ripser::Full_distance_matrix<Params> Full_distance_matrix;
   typedef Compressed_distance_matrix<Params, LOWER_TRIANGULAR> Compressed_lower_distance_matrix;
   typedef Compressed_distance_matrix<Params, UPPER_TRIANGULAR> Compressed_upper_distance_matrix;
   typedef Gudhi::ripser::Sparse_distance_matrix<Params> Sparse_distance_matrix;
@@ -370,7 +371,7 @@ struct Ripser_all {
       size_t num_edges = 0;
 
       value_t enclosing_radius = std::numeric_limits<value_t>::infinity();
-      if (threshold == std::numeric_limits<value_t>::max()) {
+      if (threshold >= std::numeric_limits<value_t>::max()) {
         for (vertex_t i = 0; i < dist.size(); ++i) {
           value_t r_i = -std::numeric_limits<value_t>::infinity();
           for (vertex_t j = 0; j < dist.size(); ++j) r_i = std::max(r_i, dist(i, j));
@@ -386,7 +387,7 @@ struct Ripser_all {
       }
       std::cout << "value range: [" << min << "," << max_finite << "]" << std::endl;
 
-      if (threshold == std::numeric_limits<value_t>::max()) {
+      if (threshold >= std::numeric_limits<value_t>::max()) {
         std::cout << "distance matrix with " << dist.size()
           << " points, using threshold at enclosing radius " << enclosing_radius
           << std::endl;
