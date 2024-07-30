@@ -22,10 +22,14 @@
 using namespace Gudhi::ripser;
 
 namespace py = pybind11;
-typedef std::vector<std::array< float, 2>> Vf;
-typedef std::vector<std::array<double, 2>> Vd;
-PYBIND11_MAKE_OPAQUE(Vf);
+typedef std::vector<   int> Vi;
+typedef std::vector<double> Vd;
+typedef std::vector<std::array< float, 2>> V2f;
+typedef std::vector<std::array<double, 2>> V2d;
+PYBIND11_MAKE_OPAQUE(Vi);
 PYBIND11_MAKE_OPAQUE(Vd);
+PYBIND11_MAKE_OPAQUE(V2f);
+PYBIND11_MAKE_OPAQUE(V2d);
 
 //template<class T>struct Numpy_euclidean {
 //  typedef Tag_other Category;
@@ -167,9 +171,39 @@ py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int 
   return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
 }
 
+py::list lower_to_coo(py::object low_mat, double max_edge_length) {
+  // Cannot release the GIL since we keep accessing Python objects.
+  // TODO: full_to_coo for numpy arrays?
+  // Should we compute the cone radius at the same time? (requires a vector of maxima)
+  std::vector<int> is, js;
+  std::vector<double> fs;
+  int rowi = 0;
+  for (auto&& row : low_mat) {
+    if (rowi == 0) { ++rowi; continue; }
+    int coli = 0;
+    for (auto&& elem : row) {
+      double d = elem.cast<double>(); // need a cast?
+      if (d <= max_edge_length) {
+        is.push_back(rowi);
+        js.push_back(coli);
+        fs.push_back(d);
+      }
+      if (++coli == rowi) break;
+    }
+    if (coli < rowi) throw std::invalid_argument("Not enough elements for a lower triangular matrix");
+    ++rowi;
+  };
+  return py::make_tuple(
+      py::array(py::cast(std::move(is))),
+      py::array(py::cast(std::move(js))),
+      py::array(py::cast(std::move(fs))));
+}
+
 PYBIND11_MODULE(_ripser, m) {
-  py::bind_vector<Vf>(m, "VectorPairFloat" , py::buffer_protocol());
-  py::bind_vector<Vd>(m, "VectorPairDouble", py::buffer_protocol());
+  py::bind_vector<Vi >(m, "VectorInt"       , py::buffer_protocol());
+  py::bind_vector<Vd >(m, "VectorDouble"    , py::buffer_protocol());
+  py::bind_vector<V2f>(m, "VectorPairFloat" , py::buffer_protocol());
+  py::bind_vector<V2d>(m, "VectorPairDouble", py::buffer_protocol());
   // Remove the default for max_dimension?
   //m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
   //m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
@@ -180,6 +214,8 @@ PYBIND11_MODULE(_ripser, m) {
   // TODO doc: duplicate entries forbidden
   m.def("_sparse", sparse<int, float>, py::arg("row"), py::arg("col"), py::arg("data").noconvert(), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_sparse", sparse<int, double>, py::arg("row"), py::arg("col"), py::arg("data"), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
+  // Not directly an interface to Ripser...
+  m.def("_lower_to_coo", lower_to_coo, py::arg("matrix"), py::arg("max_edge_length"));
 }
 
 // We could also create a RipsComplex class, that allows looking at a simplex, querying its (co)boundary, etc. But I am not convinced it is worth the effort.
