@@ -82,22 +82,22 @@ py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix:
   return ret;
 }
 
-template<class T>
-py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
-  Numpy_euclidean<T> dist{points.template unchecked<2>()};
-  if(dist.data.ndim() != 2)
-    throw std::runtime_error("points must be a 2-dimensional array");
-
-  // ripser_auto should already do that
-#if 0
-  // optional as a trick to allow destruction where I want it, without hiding dist in some scope that ends too early.
-  std::optional<py::gil_scoped_release> release_local(std::in_place);
-  compressed_distance_matrix<DParams<int, T>, LOWER_TRIANGULAR> dist(dist_);
-  release_local.reset();
-#endif
-
-  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
-}
+//template<class T>
+//py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
+//  Numpy_euclidean<T> dist{points.template unchecked<2>()};
+//  if(dist.data.ndim() != 2)
+//    throw std::runtime_error("points must be a 2-dimensional array");
+//
+//  // ripser_auto should already do that
+//#if 0
+//  // optional as a trick to allow destruction where I want it, without hiding dist in some scope that ends too early.
+//  std::optional<py::gil_scoped_release> release_local(std::in_place);
+//  compressed_distance_matrix<DParams<int, T>, LOWER_TRIANGULAR> dist(dist_);
+//  release_local.reset();
+//#endif
+//
+//  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
+//}
 
 template<class T>
 py::list full(py::array_t<T> matrix, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
@@ -161,8 +161,8 @@ PYBIND11_MODULE(_ripser, m) {
   py::bind_vector<Vf>(m, "VectorPairFloat" , py::buffer_protocol());
   py::bind_vector<Vd>(m, "VectorPairDouble", py::buffer_protocol());
   // Remove the default for max_dimension?
-  m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
-  m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
+  //m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
+  //m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_full", full<float>, py::arg("matrix").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_full", full<double>, py::arg("matrix"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_lower", lower, py::arg("matrix"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
@@ -173,3 +173,5 @@ PYBIND11_MODULE(_ripser, m) {
 }
 
 // We could also create a RipsComplex class, that allows looking at a simplex, querying its (co)boundary, etc. But I am not convinced it is worth the effort.
+
+// TODO: split into 3 files (sparse, full, lower) to help compilation.

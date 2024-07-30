@@ -640,7 +640,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   const DistanceMatrix dist; // only store a reference instead?
   const vertex_t n; // redundant with dist?
   const dimension_t dim_max;
-  const value_t threshold; // It would be nice if this was only in DistanceMatrix, but inconvenient.
+  const value_t threshold; // It would be nice if this was only in DistanceMatrix, but inconvenient. Only used to list the edges of dense distance matrices.
   const coefficient_t modulus;
   const SimplexEncoding simplex_encoding; // only store a reference instead?
   mutable std::vector<vertex_t> vertices; // we must not have several threads looking at the same complex
