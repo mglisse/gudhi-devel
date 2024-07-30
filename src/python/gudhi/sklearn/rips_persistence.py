@@ -7,7 +7,8 @@
 # Modification(s):
 #   - YYYY/MM Author: Description of the modification
 
-from .. import RipsComplex
+from .._ripser import _lower, _full, _sparse
+import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
 # joblib is required by scikit-learn
@@ -73,36 +74,46 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         """
         return self
 
-    def __transform(self, inputs):
-        max_dimension = max(self.dim_list_) + 1
+    def __transform(self, inp):
+        # TODO: give the user the option to force the use of one particular strategy (including SimplexTree)
+        max_dimension = max(self.dim_list_)
+        input_type = self.input_type
 
-        if self.input_type == 'point cloud':
-            rips = RipsComplex(points=inputs, max_edge_length = self.threshold)
-        elif self.input_type == 'lower distance matrix':
-            rips = RipsComplex(distance_matrix=inputs, max_edge_length = self.threshold)
+        if input_type == 'point cloud':
+            if self.threshold < float('inf'):
+                # Hope that the user gave a useful threshold
+                from scipy.spatial import cKDTree
+                from scipy.sparse import coo_matrix
+                tree = cKDTree(inp)
+                # Or tree.query_pairs(r=self.threshold, output_type='ndarray') and recompute the distances?
+                inp = tree.sparse_distance_matrix(tree, max_distance=self.threshold, output_type="coo_matrix")
+                input_type = 'coo_matrix' # call it 'sparse distance matrix'? 'distance coo_array'?
+
+            else:
+                from scipy.spatial.distance import pdist, squareform
+                inp = squareform(pdist(inp))
+                input_type = 'full distance matrix'
+
+        ##TODO edge collapse!!!
+        #if max_dimension > 1:
+        #    i, j = np.triu_indices_from(inp, k=1)
+
+        if input_type == 'full distance matrix':
+            #TODO: compute cone_radius before edge collapse
+            #TODO: possibly transpose for performance
+            inp = np.asarray(inp)
+            cone_radius = inp.max(-1).min()
+            r = min(self.threshold, cone_radius)
+            dgm = _full(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+        elif input_type == 'lower distance matrix':
+            # minmax threshold is computed inside _lower
+            dgm = _lower(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+        elif input_type == 'coo_matrix':
+            dgm = _sparse(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
         else:
-            raise ValueError("Only 'point cloud' and  'lower distance matrix' are valid input_type")
+            raise ValueError("Only 'point cloud', 'lower distance matrix', 'full distance matrix' and 'coo_matrix' are valid input_type") # move to __init__?
         
-        if max_dimension > 1:
-            stree = rips.create_simplex_tree(max_dimension=1)
-            stree.collapse_edges(nb_iterations = self.num_collapses)
-            stree.expansion(max_dimension)
-        else:
-            stree = rips.create_simplex_tree(max_dimension=max_dimension)
-
-        persistence_dim_max = False
-        # Specific case where, despite expansion(max_dimension), stree has a lower dimension
-        if max_dimension > stree.dimension():
-            persistence_dim_max = True
-
-        stree.compute_persistence(
-            homology_coeff_field=self.homology_coeff_field,
-            persistence_dim_max=persistence_dim_max
-        )
-
-        return [
-            stree.persistence_intervals_in_dimension(dim) for dim in self.dim_list_
-        ]
+        return [dgm[dim] for dim in self.dim_list_]
 
     def transform(self, X, Y=None):
         """Compute all the Vietoris-Rips complexes and their associated persistence diagrams.

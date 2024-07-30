@@ -341,6 +341,7 @@ struct Sparse_distance_matrix {
 
     value_t operator()(const vertex_t i, const vertex_t j) const {
 #ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+      // We could insert in both orders to save the minmax for each query.
       return m.at(std::minmax(i,j));
       //// We never hit the infinity case?
       // auto it = m.find(std::minmax(i,j));

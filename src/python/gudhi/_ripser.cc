@@ -27,24 +27,24 @@ typedef std::vector<std::array<double, 2>> Vd;
 PYBIND11_MAKE_OPAQUE(Vf);
 PYBIND11_MAKE_OPAQUE(Vd);
 
-template<class T>struct Numpy_euclidean {
-  typedef Tag_other Category;
-  typedef int vertex_t;
-  typedef T value_t;
-
-  decltype(std::declval<py::array_t<T>&>().template unchecked<2>()) data;
-
-  int size() const { return data.shape(0); }
-
-  T operator()(int i, int j) const {
-    T dist = 0;
-    for (int k=0; k<data.shape(1); ++k) {
-      T diff = data(i, k) - data(j, k);
-      dist += diff * diff;
-    }
-    return std::sqrt(dist);
-  }
-};
+//template<class T>struct Numpy_euclidean {
+//  typedef Tag_other Category;
+//  typedef int vertex_t;
+//  typedef T value_t;
+//
+//  decltype(std::declval<py::array_t<T>&>().template unchecked<2>()) data;
+//
+//  int size() const { return data.shape(0); }
+//
+//  T operator()(int i, int j) const {
+//    T dist = 0;
+//    for (int k=0; k<data.shape(1); ++k) {
+//      T diff = data(i, k) - data(j, k);
+//      dist += diff * diff;
+//    }
+//    return std::sqrt(dist);
+//  }
+//};
 
 template<class T>struct Full {
   typedef Tag_dense Category;
@@ -108,6 +108,7 @@ py::list full(py::array_t<T> matrix, int max_dimension, T max_edge_length, unsig
 }
 
 py::list lower(py::object low_mat, int max_dimension, double max_edge_length, unsigned homology_coeff_field) {
+  using Dist = Compressed_distance_matrix<DParams<int, double>, LOWER_TRIANGULAR>;
   std::vector<double> distances;
   int rowi = 0;
   for (auto&& row : low_mat) {
@@ -122,7 +123,16 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
   };
 
   std::optional<py::gil_scoped_release> release_local(std::in_place);
-  Compressed_distance_matrix<DParams<int, double>, LOWER_TRIANGULAR> dist(std::move(distances));
+  Dist dist(std::move(distances));
+
+  // Compute the radius and possibly use it as threshold
+  for (int i = 0; i < dist.size(); ++i) {
+    double r_i = -std::numeric_limits<double>::infinity();
+    for (int j = 0; j < dist.size(); ++j)
+      r_i = std::max(r_i, dist(i, j));
+    max_edge_length = std::min(max_edge_length, r_i);
+  }
+
   release_local.reset();
 
   return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
