@@ -7,7 +7,8 @@
 # Modification(s):
 #   - YYYY/MM Author: Description of the modification
 
-from .._ripser import _lower, _full, _sparse
+from .._ripser import _lower, _full, _sparse, _lower_to_coo
+from ..flag_filtration.edge_collapse import reduce_graph
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -39,7 +40,7 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         homology_dimensions,
         threshold=float('inf'),
         input_type='point cloud',
-        num_collapses=1,
+        num_collapses='auto',
         homology_coeff_field=11,
         n_jobs=None,
     ):
@@ -51,11 +52,12 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
                 Short circuit the use of :class:`~gudhi.representations.preprocessing.DimensionSelector` when only one
                 dimension matters (in other words, when `homology_dimensions` is an int).
             threshold (float): Rips maximal edge length value. Default is +Inf.
-            input_type (str): Can be 'point cloud' when inputs are point clouds, or 'lower distance matrix', when
-                inputs are lower triangular distance matrix (can be full square, but the upper part of the distance
-                matrix will not be considered). Default is 'point cloud'.
-            num_collapses (int): Specify the number of :func:`~gudhi.SimplexTree.collapse_edges` iterations to perform
-                on the SimplexTree. Default value is 1 (a relatively good enough number of iterations).
+            input_type (str): Can be 'point cloud' when inputs are point clouds, 'full distance matrix',
+                'lower distance matrix' when inputs are lower triangular distance matrix (can be full square,
+                but the upper part of the distance matrix will not be considered), or 'coo_matrix' for a distance
+                matrix in SciPy's sparse format. Default is 'point cloud'.
+            num_collapses (int|str): Specify the number of :func:`~gudhi.SimplexTree.collapse_edges` iterations to perform
+                on the SimplexTree. Default value is 'auto'.
             homology_coeff_field (int): The homology coefficient field. Must be a prime number. Default value is 11.
             n_jobs (int): Number of jobs to run in parallel. `None` (default value) means `n_jobs = 1` unless in a
                 joblib.parallel_backend context. `-1` means using all processors. cf.
@@ -87,16 +89,28 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
                 tree = cKDTree(inp)
                 # Or tree.query_pairs(r=self.threshold, output_type='ndarray') and recompute the distances?
                 inp = tree.sparse_distance_matrix(tree, max_distance=self.threshold, output_type="coo_matrix")
-                input_type = 'coo_matrix' # call it 'sparse distance matrix'? 'distance coo_array'?
-
+                input_type = 'coo_matrix' # call it 'sparse distance matrix'? 'distance coo_matrix'?
             else:
                 from scipy.spatial.distance import pdist, squareform
                 inp = squareform(pdist(inp))
                 input_type = 'full distance matrix'
 
-        ##TODO edge collapse!!!
-        #if max_dimension > 1:
-        #    i, j = np.triu_indices_from(inp, k=1)
+        # Edge collapse always goes through the sparse format
+        num_collapses = self.num_collapses
+        if num_collapses == 'auto':
+            num_collapses = 1 if max_dimension > 1 else 0
+            # or num_collapses=max_dimension-1 maybe?
+        elif max_dimension == 0:
+            num_collapses = 0
+        if num_collapses > 0:
+            if input_type in ('full distance matrix', 'lower distance matrix'):
+                # For 'full' we could use i, j = np.triu_indices_from(inp, k=1), etc
+                i, j, f = _lower_to_coo(inp, self.threshold)
+                # TODO move this, or use directly _collapse_edges
+                from scipy.sparse import coo_matrix
+                inp = coo_matrix((f, (i, j)), shape=(len(inp),) * 2)
+                input_type = 'coo_matrix'
+            inp = reduce_graph(inp, num_collapses)
 
         if input_type == 'full distance matrix':
             #TODO: compute cone_radius before edge collapse
@@ -109,7 +123,8 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
             # minmax threshold is computed inside _lower
             dgm = _lower(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
         elif input_type == 'coo_matrix':
-            dgm = _sparse(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+            #TODO: switch to coo_array (the interface is different)?
+            dgm = _sparse(inp.row, inp.col, inp.data, inp.shape[0], max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
         else:
             raise ValueError("Only 'point cloud', 'lower distance matrix', 'full distance matrix' and 'coo_matrix' are valid input_type") # move to __init__?
         
