@@ -129,6 +129,7 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
   std::optional<py::gil_scoped_release> release_local(std::in_place);
   Dist dist(std::move(distances));
 
+#if 0
   // Compute the radius and possibly use it as threshold
   for (int i = 0; i < dist.size(); ++i) {
     double r_i = -std::numeric_limits<double>::infinity();
@@ -136,6 +137,7 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
       r_i = std::max(r_i, dist(i, j));
     max_edge_length = std::min(max_edge_length, r_i);
   }
+#endif
 
   release_local.reset();
 
@@ -199,6 +201,26 @@ py::list lower_to_coo(py::object low_mat, double max_edge_length) {
       py::array(py::cast(std::move(fs))));
 }
 
+double lower_cone_radius(py::object low_mat) {
+  // It would be more efficient to read the matrix only once
+  auto n = py::len(low_mat);
+  std::vector<double> maxs(n, -std::numeric_limits<double>::infinity());
+  int rowi = 0;
+  for (auto&& row : low_mat) {
+    if (rowi == 0) { ++rowi; continue; }
+    int coli = 0;
+    for (auto&& elem : row) {
+      double d = elem.cast<double>();
+      maxs[rowi] = std::max(maxs[rowi], d);
+      maxs[coli] = std::max(maxs[coli], d);
+      if (++coli == rowi) break;
+    }
+    if (coli < rowi) throw std::invalid_argument("Not enough elements for a lower triangular matrix");
+    ++rowi;
+  };
+  return *std::max_element(maxs.begin(), maxs.end());
+}
+
 PYBIND11_MODULE(_ripser, m) {
   py::bind_vector<Vi >(m, "VectorInt"       , py::buffer_protocol());
   py::bind_vector<Vd >(m, "VectorDouble"    , py::buffer_protocol());
@@ -216,6 +238,7 @@ PYBIND11_MODULE(_ripser, m) {
   m.def("_sparse", sparse<int, double>, py::arg("row"), py::arg("col"), py::arg("data"), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   // Not directly an interface to Ripser...
   m.def("_lower_to_coo", lower_to_coo, py::arg("matrix"), py::arg("max_edge_length"));
+  m.def("_lower_cone_radius", lower_cone_radius, py::arg("matrix"));
 }
 
 // We could also create a RipsComplex class, that allows looking at a simplex, querying its (co)boundary, etc. But I am not convinced it is worth the effort.

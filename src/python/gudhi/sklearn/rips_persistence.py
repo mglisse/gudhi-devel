@@ -7,10 +7,13 @@
 # Modification(s):
 #   - YYYY/MM Author: Description of the modification
 
-from .._ripser import _lower, _full, _sparse, _lower_to_coo
+from .._ripser import _lower, _full, _sparse, _lower_to_coo, _lower_cone_radius
 from ..flag_filtration.edge_collapse import reduce_graph
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+from scipy.sparse import coo_matrix
+from scipy.spatial import cKDTree
+from scipy.spatial.distance import pdist, squareform
 
 # joblib is required by scikit-learn
 from joblib import Parallel, delayed
@@ -79,52 +82,56 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
     def __transform(self, inp):
         # TODO: give the user the option to force the use of one particular strategy (including SimplexTree)
         max_dimension = max(self.dim_list_)
-        input_type = self.input_type
-
-        if input_type == 'point cloud':
-            if self.threshold < float('inf'):
-                # Hope that the user gave a useful threshold
-                from scipy.spatial import cKDTree
-                from scipy.sparse import coo_matrix
-                tree = cKDTree(inp)
-                # Or tree.query_pairs(r=self.threshold, output_type='ndarray') and recompute the distances?
-                inp = tree.sparse_distance_matrix(tree, max_distance=self.threshold, output_type="coo_matrix")
-                input_type = 'coo_matrix' # call it 'sparse distance matrix'? 'distance coo_matrix'?
-            else:
-                from scipy.spatial.distance import pdist, squareform
-                inp = squareform(pdist(inp))
-                input_type = 'full distance matrix'
-
-        # Edge collapse always goes through the sparse format
         num_collapses = self.num_collapses
+        input_type = self.input_type
+        threshold = self.threshold
         if num_collapses == 'auto':
             num_collapses = 1 if max_dimension > 1 else 0
             # or num_collapses=max_dimension-1 maybe?
         elif max_dimension == 0:
             num_collapses = 0
-        if num_collapses > 0:
-            if input_type in ('full distance matrix', 'lower distance matrix'):
+
+        if input_type == 'point cloud':
+            if threshold < float('inf'):
+                # Hope that the user gave a useful threshold
+                tree = cKDTree(inp)
+                # Or tree.query_pairs(r=threshold, output_type='ndarray') and recompute the distances?
+                inp = tree.sparse_distance_matrix(tree, max_distance=threshold, output_type="coo_matrix")
+                input_type = 'coo_matrix' # FIXME: call it 'sparse distance matrix'? 'distance coo_matrix'?
+            else:
+                inp = squareform(pdist(inp))
+                input_type = 'full distance matrix'
+
+        # Dense -> sparse
+        if input_type in ('full distance matrix', 'lower distance matrix'):
+            # After this filtration value, all complexes are cones, nothing happens
+            if input_type == 'full distance matrix':
+                inp = np.asarray(inp)
+                cone_radius = inp.max(-1).min()
+            else:
+                cone_radius = _lower_cone_radius(inp)
+            sparsify = num_collapses > 0 or threshold < cone_radius # heuristic
+            threshold = min(threshold, cone_radius)
+            if sparsify:
                 # For 'full' we could use i, j = np.triu_indices_from(inp, k=1), etc
-                i, j, f = _lower_to_coo(inp, self.threshold)
-                # TODO move this, or use directly _collapse_edges
-                from scipy.sparse import coo_matrix
+                i, j, f = _lower_to_coo(inp, threshold)
                 inp = coo_matrix((f, (i, j)), shape=(len(inp),) * 2)
                 input_type = 'coo_matrix'
+
+        if num_collapses > 0:
+            assert input_type == 'coo_matrix'
             inp = reduce_graph(inp, num_collapses)
 
         if input_type == 'full distance matrix':
-            #TODO: compute cone_radius before edge collapse
-            #TODO: possibly transpose for performance
-            inp = np.asarray(inp)
-            cone_radius = inp.max(-1).min()
-            r = min(self.threshold, cone_radius)
-            dgm = _full(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+            ##TODO: possibly transpose for performance
+            #if inp.strides[0] > inp.strides[1]:
+            #    inp = inp.T
+            dgm = _full(inp, max_dimension=max_dimension, max_edge_length=threshold, homology_coeff_field=self.homology_coeff_field)
         elif input_type == 'lower distance matrix':
-            # minmax threshold is computed inside _lower
-            dgm = _lower(inp, max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+            dgm = _lower(inp, max_dimension=max_dimension, max_edge_length=threshold, homology_coeff_field=self.homology_coeff_field)
         elif input_type == 'coo_matrix':
-            #TODO: switch to coo_array (the interface is different)?
-            dgm = _sparse(inp.row, inp.col, inp.data, inp.shape[0], max_dimension=max_dimension, max_edge_length=self.threshold, homology_coeff_field=self.homology_coeff_field)
+            #TODO: switch to coo_array (danger: row/col seem deprecated)?
+            dgm = _sparse(inp.row, inp.col, inp.data, inp.shape[0], max_dimension=max_dimension, max_edge_length=threshold, homology_coeff_field=self.homology_coeff_field)
         else:
             raise ValueError("Only 'point cloud', 'lower distance matrix', 'full distance matrix' and 'coo_matrix' are valid input_type") # move to __init__?
         
