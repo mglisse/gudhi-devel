@@ -135,7 +135,8 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         else:
             raise ValueError("Only 'point cloud', 'lower distance matrix', 'full distance matrix' and 'coo_matrix' are valid input_type") # move to __init__?
         
-        return [dgm[dim] for dim in self.dim_list_]
+        # dgm stops at n-2
+        return [dgm[dim] if dim < len(dgm) else np.empty((0,2)) for dim in self.dim_list_]
 
     def transform(self, X, Y=None):
         """Compute all the Vietoris-Rips complexes and their associated persistence diagrams.

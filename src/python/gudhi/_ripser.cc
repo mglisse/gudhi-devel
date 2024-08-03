@@ -74,7 +74,11 @@ py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix:
   std::vector<std::vector<std::array<T, 2>>> dgms;
   {
     py::gil_scoped_release release;
-    auto output = [&](T birth, T death){ dgms.back().push_back({birth, death}); };
+    auto output = [&](T birth, T death){
+      // Skip empty intervals
+      if (birth < death)
+        dgms.back().push_back({birth, death});
+    };
     auto switch_dim = [&](int new_dim){
       dgms.emplace_back();
     };
