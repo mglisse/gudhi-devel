@@ -95,8 +95,17 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
             if threshold < float('inf'):
                 # Hope that the user gave a useful threshold
                 tree = cKDTree(inp)
-                # Or tree.query_pairs(r=threshold, output_type='ndarray') and recompute the distances?
-                inp = tree.sparse_distance_matrix(tree, max_distance=threshold, output_type="coo_matrix")
+
+                ## This returns self-loops and every edge twice (symmetry)
+                #inp = tree.sparse_distance_matrix(tree, max_distance=threshold, output_type="coo_matrix")
+                #mask = inp.row < inp.col
+                #inp = coo_matrix((inp.data[mask], (inp.row[mask], inp.col[mask])), shape=inp.shape)
+
+                # Gets the right edges, but forgets the distances
+                pairs = tree.query_pairs(r=threshold, output_type='ndarray')
+                data = np.ravel(np.linalg.norm(np.diff(inp[pairs], axis=1), axis=-1))
+                inp = coo_matrix((data, (pairs[:,0], pairs[:,1])), shape=(len(inp),)*2)
+
                 input_type = 'coo_matrix' # FIXME: call it 'sparse distance matrix'? 'distance coo_matrix'?
             else:
                 inp = squareform(pdist(inp))
