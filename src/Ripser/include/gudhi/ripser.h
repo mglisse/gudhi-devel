@@ -1304,6 +1304,8 @@ template<class value_t_> struct TParams2 {
 template<bool use_coefficients, class DistanceMatrix, class OutDim, class OutPair>
 void help1(DistanceMatrix&& dist, int dim_max, typename DistanceMatrix::value_t threshold, unsigned modulus, OutDim&& output_dim, OutPair&& output_pair) {
   auto n = dist.size();
+  // TODO: if n>=3 we could even go to n-3, because the Rips cannot have homology in dimension n-2
+  // (e.g. for 3 points, there is no 1-homology)
   if (dim_max > n - 2) dim_max = n - 2; // FIXME: duplicated. problem if n unsigned and 0 or 1.
   int bits_per_vertex = log2up(n);
   int bits_for_coeff = log2up(modulus - 1); // duplicating logic :-( Also, if modulus is something absurd, the diagnostic is too late
@@ -1395,3 +1397,24 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
 // - dense matrix & threshold -> sparse matrix
 // - dense matrix & !threshold -> compute minmax, keep dense
 }
+
+/* Relevant benchmarks where different functions dominate the profile
+# push
+ripser --format point-cloud ripser/examples/o3_1024.txt
+# pop
+ripser --format point-cloud ripser/examples/o3_4096.txt --threshold 1.6
+# apparent_pair (get_simplex_vertices + dist) - edge_collapse would help
+ripser --format point-cloud --dim 2 --threshold .7 tore
+# apparent_pair (get_simplex_vertices) - no edge collapse possible
+ripser --format point-cloud circle24 --dim 25
+
+where equivalent datasets can be obtained through
+  tore -> tore3D_1307.off
+  circle24:
+    t=np.linspace(0, 2*np.pi, 24, endpoint=False)
+    np.stack((np.cos(t),np.sin(t))).T
+    OR
+    gudhi.datasets.generators.points.torus(24,1,'grid')
+  o3 (?):
+    scipy.stats.ortho_group.rvs(3,4096).reshape(-1,9)
+*/

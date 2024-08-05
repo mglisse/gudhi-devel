@@ -16,3 +16,14 @@ time ./a.out --format point-cloud --dim 2 --threshold .7 tore >! /tmp/new3
 time ./a.out --format point-cloud circle24 --dim 25 >! /tmp/new4
 
 # for i in new*; do mv $i old${i#new}; done
+
+
+# datasets:
+# tore -> tore3D_1307.off
+# circle24:
+#   t=np.linspace(0, 2*np.pi, 24, endpoint=False)
+#   np.stack((np.cos(t),np.sin(t))).T
+#   OR
+#   gudhi.datasets.generators.points.torus(24,1,'grid')
+# o3 (?):
+#   scipy.stats.ortho_group.rvs(3,4096).reshape(-1,9)
