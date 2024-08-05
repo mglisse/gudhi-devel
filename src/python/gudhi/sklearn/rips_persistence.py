@@ -82,17 +82,16 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
         return self
 
     def __transform(self, inp):
-        # TODO: give the user the option to force the use of one particular strategy (including SimplexTree)
-        n = inp.shape[0] if input_type == 'distance coo_matrix' else len(inp)
-        max_dimension = min(max(self.dim_list_), max(0, n-3))
+        # TODO: give the user more control over the strategy
         num_collapses = self.num_collapses
         input_type = self.input_type
         threshold = self.threshold
+        n = inp.shape[0] if input_type == 'distance coo_matrix' else len(inp)
+        max_dimension = min(max(self.dim_list_), max(0, n-3))
         # Ripser needs to encode simplices and coefficients in 128 bits
-        use_simplex_tree =
-            math.comb(n, min(n // 2, max_dimension + 2)) >= (1 << (128 - (self.homology_coeff_field - 2).bit_length()))
+        use_simplex_tree = math.comb(n, min(n // 2, max_dimension + 2)) >= (1 << (128 - (self.homology_coeff_field - 2).bit_length()))
         if num_collapses == 'auto':
-            num_collapses = 1 if max_dimension > not use_simplex_tree else 0
+            num_collapses = 1 if max_dimension > (not use_simplex_tree) else 0
             # or num_collapses=max_dimension-1 maybe?
         elif max_dimension == 0:
             num_collapses = 0
