@@ -55,14 +55,14 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
             homology_dimensions (int or list of int): The returned persistence diagrams dimension(s).
                 Short circuit the use of :class:`~gudhi.representations.preprocessing.DimensionSelector` when only one
                 dimension matters (in other words, when `homology_dimensions` is an int).
-            threshold (float): Rips maximal edge length value. Default is +Inf.
+            threshold (float): Rips maximal edge length value. Default is +Inf. Ignored if input_type is 'distance coo_matrix'.
             input_type (str): Can be 'point cloud' when inputs are point clouds, 'full distance matrix',
                 'lower distance matrix' when inputs are lower triangular distance matrix (can be full square,
                 but the upper part will not be considered), or 'distance coo_matrix' for a distance matrix in SciPy's
                 sparse format, which should contain each edge at most once (avoid the symmetric) and no diagonal entry.
                 Default is 'point cloud'.
-            num_collapses (int|str): Specify the number of :func:`~gudhi.SimplexTree.collapse_edges` iterations to perform
-                on the SimplexTree. Default value is 'auto'.
+            num_collapses (int|str): Specify the number of iterations of :func:`~gudhi.flag_filtration.edge_collapse.reduce_graph`
+                (edge collapse) to perform on the graph. Default value is 'auto'.
             homology_coeff_field (int): The homology coefficient field. Must be a prime number. Default value is 11.
             n_jobs (int): Number of jobs to run in parallel. `None` (default value) means `n_jobs = 1` unless in a
                 joblib.parallel_backend context. `-1` means using all processors. cf.
@@ -83,12 +83,14 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
 
     def __transform(self, inp):
         # TODO: give the user more control over the strategy
+        # Should we use threshold in the sparse case?
         num_collapses = self.num_collapses
         input_type = self.input_type
         threshold = self.threshold
         n = inp.shape[0] if input_type == 'distance coo_matrix' else len(inp)
         max_dimension = min(max(self.dim_list_), max(0, n-3))
-        # Ripser needs to encode simplices and coefficients in 128 bits
+        # Ripser needs to encode simplices and coefficients in 128 bits, which may not always fit
+        # Instead of a 256 bit version which may not always suffice either, fall back to SimplexTree
         use_simplex_tree = math.comb(n, min(n // 2, max_dimension + 2)) >= (1 << (128 - (self.homology_coeff_field - 2).bit_length()))
         if num_collapses == 'auto':
             num_collapses = 1 if max_dimension > (not use_simplex_tree) else 0
@@ -102,12 +104,12 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
                 # Hope that the user gave a useful threshold
                 tree = cKDTree(inp)
 
-                ## This returns self-loops and every edge twice (symmetry)
+                ## V1: Returns self-loops and every edge twice (symmetry)
                 # inp = tree.sparse_distance_matrix(tree, max_distance=threshold, output_type="coo_matrix")
                 # mask = inp.row < inp.col
                 # inp = coo_matrix((inp.data[mask], (inp.row[mask], inp.col[mask])), shape=inp.shape)
 
-                # Gets the right edges, but forgets the distances
+                # V2: Gets the right edges, but forgets the distances
                 pairs = tree.query_pairs(r=threshold, output_type='ndarray')
                 data = np.ravel(np.linalg.norm(np.diff(inp[pairs], axis=1), axis=-1))
                 inp = coo_matrix((data, (pairs[:,0], pairs[:,1])), shape=(n,)*2)
@@ -137,16 +139,16 @@ class RipsPersistence(BaseEstimator, TransformerMixin):
             assert input_type == 'distance coo_matrix'
             inp = reduce_graph(inp, num_collapses)
 
-        assert not use_simplex_tree
         if use_simplex_tree:
             from gudhi import SimplexTree
             st = SimplexTree()
-            # FIXME: remove edges longer than threshold? Do we do it with Ripser?
-            # TODO: use create_from_array in case of full matrix
+            # Use create_from_array in case of full matrix?
+            # (not important since this fallback mostly matters in high dimension, where we use edge-collapse anyway)
+            st.insert_batch(np.arange(n).reshape(1,-1), np.zeros(n))
             st.insert_edges_from_coo_matrix(inp)
             st.expansion(max_dimension + 1)
             st.compute_persistence(homology_coeff_field=self.homology_coeff_field, persistence_dim_max=max_dimension>=st.dimension())
-            return [ stree.persistence_intervals_in_dimension(dim) for dim in self.dim_list_ ]
+            return [ st.persistence_intervals_in_dimension(dim) for dim in self.dim_list_ ]
 
         if input_type == 'full distance matrix':
             ## Possibly transpose for performance?
