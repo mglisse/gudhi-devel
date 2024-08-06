@@ -1,4 +1,9 @@
-// Based on Ripser commit 140670f2c76997404601e43d8054151f46be9fd7
+/* Based on Ripser commit 140670f2c76997404601e43d8054151f46be9fd7
+ *    Modification(s):
+ *      - YYYY/MM Author: Description of the modification
+ *      - 2024 Marc Glisse: Heavy refactoring
+*/
+
 /*
 
  Ripser: a lean C++ code for computation of Vietoris-Rips persistence barcodes
@@ -37,38 +42,36 @@
 
 */
 
-//#define USE_COEFFICIENTS
-//#define INDICATE_PROGRESS
+//#define GUDHI_INDICATE_PROGRESS
 
-// #define USE_BOOST_HEAP // only useful when heap::push dominates?
-// #define USE_HASHMAP_FOR_SPARSE_DIST_MAT // only useful in cases where edge-collapse is more important?
+// #define GUDHI_RIPSER_USE_BOOST_HEAP // only useful when heap::push dominates?
+// #define GUDHI_RIPSER_USE_HASHMAP_FOR_SPARSE_DIST_MAT // only useful in cases where edge-collapse is more important?
 
-// TODO:
-// * from branch representative-cocycles
-//   - for vertices: brute force check all vertices that are in the same connected component (could do better, but there is already quadraticness elsewhere in most cases, even the output for dim 0 may be quadratic)
-//   - for others: print_chain just calls iteratively get_pivot on working_reduction_column
-// * from branch representative-cycles
-//   - dim 0: trivial
-//   - parametrize a number of functions (like add_coboundary) by the (co)boundary iterator so they can be also used for homology
-//   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style. I think we have 2 choices: reduce the birth and check which columns we add (only possibility for essential classes, but do we really need to do cohomology first if we are going to do that?), or reduce the death and look at the column after reduction (Ripser(er) chose this).
-// * check out the persistence image branch
-//
-// * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips. cf scikit-tda
-//
-// * assert -> GUDHI_*
-//   INDICATE_PROGRESS -> GUDHI_INDICATE_PROGRESS
-//   etc
+/* TODO:
+ * from branch representative-cocycles
+   - for vertices: brute force check all vertices that are in the same connected component (could do better, but there is already quadraticness elsewhere in most cases, even the output for dim 0 may be quadratic)
+   - for others: print_chain just calls iteratively get_pivot on working_reduction_column
+ * from branch representative-cycles
+   - dim 0: trivial
+   - parametrize a number of functions (like add_coboundary) by the (co)boundary iterator so they can be also used for homology
+   - once cohomology is computed for some dim, assemble the relevant simplices (don't forget the essential ones) and reduce them homology-style. I think we have 2 choices: reduce the birth and check which columns we add (only possibility for essential classes, but do we really need to do cohomology first if we are going to do that?), or reduce the death and look at the column after reduction (Ripser(er) chose this).
+ * check out the persistence image branch
+
+ * allow non-0 filtration value on vertices, so we can handle all flag-type filtrations, not just plain Rips. cf scikit-tda
+*/
+
+#ifndef GUDHI_RIPSER_H
+#define GUDHI_RIPSER_H
 
 #include <algorithm>
-#include <cassert>
-#include <chrono>
-#include <cmath>
-#include <fstream>
-#include <iostream>
+#include <cmath> // sqrt
 #include <numeric>
 #include <queue>
 #include <optional>
-#include <sstream>
+#include <stdexcept>
+#ifdef GUDHI_INDICATE_PROGRESS
+#include <chrono>
+#endif
 
 #include <boost/range/iterator_range_core.hpp>
 #include <boost/version.hpp>
@@ -78,15 +81,19 @@
 #include <boost/unordered_map.hpp>
 #endif
 
-#ifdef USE_BOOST_HEAP
+#ifdef GUDHI_RIPSER_USE_BOOST_HEAP
 #include <boost/heap/d_ary_heap.hpp>
 #endif
 
 #include <gudhi/uint128.h>
+#include <gudhi/Debug_utils.h>
+
 
 namespace Gudhi::ripser {
 
-#ifdef USE_BOOST_HEAP
+#define GUDHI_assert(X) GUDHI_CHECK(X, std::logic_error(""))
+
+#ifdef GUDHI_RIPSER_USE_BOOST_HEAP
 template <class T, class, class C>
 using Heap = boost::heap::d_ary_heap<T, boost::heap::arity<8>, boost::heap::compare<C>>;
 #else
@@ -176,7 +183,7 @@ std::vector<coefficient_storage_t> multiplicative_inverse_vector(const coefficie
   return inverse;
 }
 
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
 constexpr std::chrono::milliseconds time_step(40);
 constexpr const char* clear_line="\r\033[K";
 #endif
@@ -241,7 +248,7 @@ struct Compressed_distance_matrix {
   public:
     Compressed_distance_matrix(std::vector<value_t>&& _distances)
       : distances(std::move(_distances)), rows((1 + std::sqrt(1 + 8 * distances.size())) / 2) {
-        assert(distances.size() == (std::size_t)size() * (size() - 1) / 2);
+        GUDHI_assert(distances.size() == (std::size_t)size() * (size() - 1) / 2);
         init_rows();
       }
 
@@ -309,7 +316,7 @@ struct Sparse_distance_matrix {
     std::size_t num_edges; // TODO: useless, remove
 
   private:
-#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+#ifdef GUDHI_RIPSER_USE_HASHMAP_FOR_SPARSE_DIST_MAT
 #if BOOST_VERSION >= 108100
     boost::unordered_flat_map<std::pair<vertex_t,vertex_t>,value_t> m;
 #else
@@ -340,7 +347,7 @@ struct Sparse_distance_matrix {
       }
 
     value_t operator()(const vertex_t i, const vertex_t j) const {
-#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+#ifdef GUDHI_RIPSER_USE_HASHMAP_FOR_SPARSE_DIST_MAT
       // We could insert in both orders to save the minmax for each query.
       return m.at(std::minmax(i,j));
       //// We never hit the infinity case?
@@ -357,7 +364,7 @@ struct Sparse_distance_matrix {
     vertex_t size() const { return neighbors.size(); }
   private:
     void init() {
-#ifdef USE_HASHMAP_FOR_SPARSE_DIST_MAT
+#ifdef GUDHI_RIPSER_USE_HASHMAP_FOR_SPARSE_DIST_MAT
       for(vertex_t i=0; i<size(); ++i){
         for(auto n:neighbors[i]){
           m[std::minmax(i,get_vertex(n))]=get_diameter(n);
@@ -377,12 +384,12 @@ struct Euclidean_distance_matrix {
 
     Euclidean_distance_matrix(std::vector<std::vector<value_t>>&& _points)
       : points(std::move(_points)) {
-        for (auto p : points) { assert(p.size() == points.front().size()); }
+        for (auto p : points) { GUDHI_assert(p.size() == points.front().size()); }
       }
 
     value_t operator()(const vertex_t i, const vertex_t j) const {
-      assert((std::size_t)i < points.size());
-      assert((std::size_t)j < points.size());
+      GUDHI_assert((std::size_t)i < points.size());
+      GUDHI_assert((std::size_t)j < points.size());
       return std::sqrt(std::inner_product(
             points[i].begin(), points[i].end(), points[j].begin(), value_t(), std::plus<value_t>(),
             [](value_t u, value_t v) { return (u - v) * (u - v); }));
@@ -415,7 +422,7 @@ template <typename ValueType> class Compressed_sparse_matrix_ {
   void append_column() { bounds.push_back(entries.size()); }
 
   void push_back(const ValueType e) {
-    assert(0 < bounds.size());
+    GUDHI_assert(0 < bounds.size());
     entries.push_back(e);
     ++bounds.back();
   }
@@ -473,7 +480,7 @@ class Cns_encoding {
     }
 
     simplex_t operator()(vertex_t n, dimension_t k) const {
-      assert(n >= k - 1);
+      GUDHI_assert(n >= k - 1);
       return B[k][n];
     }
 
@@ -535,7 +542,7 @@ class Bitfield_encoding {
     }
 
     vertex_t get_max_vertex(const simplex_t idx, dimension_t k, const vertex_t) const {
-      assert(k > 0);
+      GUDHI_assert(k > 0);
       --k;
 #ifdef USE_N_MINUS_K
       return static_cast<vertex_t>(idx >> (bits_per_vertex * k)) + k;
@@ -562,14 +569,14 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   struct entry_with_coeff_t {
     simplex_t content;
     entry_with_coeff_t(simplex_t _index, coefficient_t _coefficient, int bits_for_coeff)
-      : content((_index << bits_for_coeff) | (_coefficient - 1)) { assert(_coefficient != 0); }
+      : content((_index << bits_for_coeff) | (_coefficient - 1)) { GUDHI_assert(_coefficient != 0); }
     entry_with_coeff_t() {}
     // We never store a coefficient of 0, so we can store coef-1 so %2 requires 0 bit and %3 only 1 bit
     friend const entry_with_coeff_t& get_entry(const entry_with_coeff_t& e) { return e; }
   };
   simplex_t get_index(const entry_with_coeff_t& e) const { return e.content >> num_bits_for_coeff(); }
   coefficient_t get_coefficient(const entry_with_coeff_t& e) const { return static_cast<coefficient_t>(e.content & (((simplex_t)1 << num_bits_for_coeff()) - 1)) + 1; }
-  void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) const { assert(c!=0); e.content = (e.content & ((simplex_t)(-1) << num_bits_for_coeff())) | (c - 1); }
+  void set_coefficient(entry_with_coeff_t& e, const coefficient_t c) const { GUDHI_assert(c!=0); e.content = (e.content & ((simplex_t)(-1) << num_bits_for_coeff())) | (c - 1); }
   // Should we cache the masks derived from num_bits_for_coeff?
 
   struct entry_plain_t {
@@ -580,7 +587,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
   };
   static simplex_t get_index(const entry_plain_t& i) { return i.index; }
   static coefficient_t get_coefficient(const entry_plain_t& i) { return 1; }
-  static void set_coefficient(entry_plain_t& e, const coefficient_t c) { assert(c==1); }
+  static void set_coefficient(entry_plain_t& e, const coefficient_t c) { GUDHI_assert(c==1); }
 
   typedef std::conditional_t<use_coefficients, entry_with_coeff_t, entry_plain_t> entry_t;
   entry_t make_entry(simplex_t i, coefficient_t c) const { return entry_t(i, c, num_bits_for_coeff()); }
@@ -692,24 +699,14 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
 
   std::vector<diameter_simplex_t> get_edges() {
     if constexpr (!std::is_same_v<typename DistanceMatrix::Category, Tag_sparse>) { // Compressed_lower_distance_matrix
-      std::vector<diameter_simplex_t> edges;
-      std::vector<vertex_t> vertices(2);
       // TODO: it would be convenient to have DistanceMatrix provide a range of neighbors at dist<=threshold even in the dense case (as a filtered_range)
-#if 1
-      // This version avoids a call to get_simplex_vertices
+      std::vector<diameter_simplex_t> edges;
       for (vertex_t i = 0; i < n; ++i) {
         for (vertex_t j = 0; j < i; ++j) {
           value_t length = dist(i, j);
           if (length <= threshold) edges.push_back({length, get_edge_index(i, j)});
         }
       }
-#else
-      for (simplex_t index = simplex_encoding(n, 2); index-- > 0;) {
-        get_simplex_vertices(index, 1, dist.size(), vertices.rbegin());
-        value_t length = dist(vertices[0], vertices[1]);
-        if (length <= threshold) edges.push_back({length, index});
-      }
-#endif
       return edges;
     } else { // Sparse_distance_matrix
       std::vector<diameter_simplex_t> edges;
@@ -760,7 +757,7 @@ template <typename DistanceMatrix, typename SimplexEncoding, typename Params> st
         idx_above += simplex_encoding(j, k + 1);
         --j;
         --k;
-        assert(k != -1);
+        GUDHI_assert(k != -1);
       }
       value_t cofacet_diameter = get_diameter(simplex);
       // The order of j and i matters for performance
@@ -1003,7 +1000,7 @@ template <typename Filtration> class Persistent_cohomology {
       std::vector<diameter_simplex_t>& columns_to_reduce,
       entry_hash_map& pivot_column_index, dimension_t dim) {
 
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
     std::cerr << clear_line << "assembling columns" << std::flush;
     std::chrono::steady_clock::time_point next = std::chrono::steady_clock::now() + time_step;
 #endif
@@ -1017,7 +1014,7 @@ template <typename Filtration> class Persistent_cohomology {
       while(true) {
         std::optional<diameter_entry_t> cofacet = cofacets2.next(false);
         if (!cofacet) break;
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
         if (std::chrono::steady_clock::now() > next) {
           std::cerr << clear_line << "assembling " << next_simplices.size()
             << " columns (processing " << std::distance(&simplices[0], &simplex)
@@ -1035,14 +1032,14 @@ template <typename Filtration> class Persistent_cohomology {
 
     if (dim < dim_max) simplices.swap(next_simplices);
 
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
     std::cerr << clear_line << "sorting " << columns_to_reduce.size() << " columns"
       << std::flush;
 #endif
 
     std::sort(columns_to_reduce.begin(), columns_to_reduce.end(),
         Greater_diameter_or_smaller_index<diameter_simplex_t>(filt));
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
     std::cerr << clear_line << std::flush;
 #endif
   }
@@ -1160,7 +1157,7 @@ template <typename Filtration> class Persistent_cohomology {
         Greater_diameter_or_smaller_index<diameter_entry_t>>
           working_reduction_column(cmp), working_coboundary(cmp);
 
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
       std::chrono::steady_clock::time_point next = std::chrono::steady_clock::now() + time_step;
 #endif
       for (size_t index_column_to_reduce = 0; index_column_to_reduce < columns_to_reduce.size();
@@ -1178,7 +1175,7 @@ template <typename Filtration> class Persistent_cohomology {
         // When we found an emergent pair, we could avoid checking again below, but it does not seem to gain anything in practice.
 
         while (true) {
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
           if (std::chrono::steady_clock::now() > next) {
             std::cerr << clear_line << "reducing column " << index_column_to_reduce + 1
               << "/" << columns_to_reduce.size() << " (diameter " << diameter << ")"
@@ -1216,7 +1213,7 @@ template <typename Filtration> class Persistent_cohomology {
               while (true) {
                 std::optional<diameter_entry_t> e = pop_pivot(working_reduction_column);
                 if (!e) break;
-                assert(filt.get_coefficient(*e) > 0);
+                GUDHI_assert(filt.get_coefficient(*e) > 0);
                 reduction_matrix.push_back(*e);
               }
               break;
@@ -1227,7 +1224,7 @@ template <typename Filtration> class Persistent_cohomology {
           }
         }
       }
-#ifdef INDICATE_PROGRESS
+#ifdef GUDHI_INDICATE_PROGRESS
       std::cerr << clear_line << std::flush;
 #endif
     }
@@ -1397,6 +1394,8 @@ void ripser_auto(DistanceMatrix dist, int dim_max, typename DistanceMatrix::valu
 // - dense matrix & threshold -> sparse matrix
 // - dense matrix & !threshold -> compute minmax, keep dense
 }
+#undef GUDHI_assert
+#endif // GUDHI_RIPSER_H
 
 /* Relevant benchmarks where different functions dominate the profile
 # push
