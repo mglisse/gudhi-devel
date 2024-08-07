@@ -1,4 +1,9 @@
-// Based on Ripser commit 140670f2c76997404601e43d8054151f46be9fd7
+/* Based on Ripser commit 140670f2c76997404601e43d8054151f46be9fd7
+ *    Modification(s):
+ *      - YYYY/MM Author: Description of the modification
+ *      - 2024 Marc Glisse: Heavy refactoring
+*/
+
 /*
 
  Ripser: a lean C++ code for computation of Vietoris-Rips persistence barcodes

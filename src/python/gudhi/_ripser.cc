@@ -2,7 +2,7 @@
  *    See file LICENSE or go to https://gudhi.inria.fr/licensing/ for full license details.
  *    Author(s):       Marc Glisse
  *
- *    Copyright (C) 2023 Inria
+ *    Copyright (C) 2024 Inria
  *
  *    Modification(s):
  *      - YYYY/MM Author: Description of the modification
@@ -30,25 +30,6 @@ PYBIND11_MAKE_OPAQUE(Vi);
 PYBIND11_MAKE_OPAQUE(Vd);
 PYBIND11_MAKE_OPAQUE(V2f);
 PYBIND11_MAKE_OPAQUE(V2d);
-
-//template<class T>struct Numpy_euclidean {
-//  typedef Tag_other Category;
-//  typedef int vertex_t;
-//  typedef T value_t;
-//
-//  decltype(std::declval<py::array_t<T>&>().template unchecked<2>()) data;
-//
-//  int size() const { return data.shape(0); }
-//
-//  T operator()(int i, int j) const {
-//    T dist = 0;
-//    for (int k=0; k<data.shape(1); ++k) {
-//      T diff = data(i, k) - data(j, k);
-//      dist += diff * diff;
-//    }
-//    return std::sqrt(dist);
-//  }
-//};
 
 template<class T>struct Full {
   typedef Tag_dense Category;
@@ -90,23 +71,6 @@ py::list doit(DistanceMatrix&& dist, int max_dimension, typename DistanceMatrix:
   return ret;
 }
 
-//template<class T>
-//py::list euclidean(py::array_t<T> points, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
-//  Numpy_euclidean<T> dist{points.template unchecked<2>()};
-//  if(dist.data.ndim() != 2)
-//    throw std::runtime_error("points must be a 2-dimensional array");
-//
-//  // ripser_auto should already do that
-//#if 0
-//  // optional as a trick to allow destruction where I want it, without hiding dist in some scope that ends too early.
-//  std::optional<py::gil_scoped_release> release_local(std::in_place);
-//  compressed_distance_matrix<DParams<int, T>, LOWER_TRIANGULAR> dist(dist_);
-//  release_local.reset();
-//#endif
-//
-//  return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
-//}
-
 template<class T>
 py::list full(py::array_t<T> matrix, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
   Full<T> dist{matrix.template unchecked<2>()};
@@ -130,19 +94,9 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
     ++rowi;
   };
 
+  // optional as a trick to allow destruction where I want it
   std::optional<py::gil_scoped_release> release_local(std::in_place);
   Dist dist(std::move(distances));
-
-#if 0
-  // Compute the radius and possibly use it as threshold
-  for (int i = 0; i < dist.size(); ++i) {
-    double r_i = -std::numeric_limits<double>::infinity();
-    for (int j = 0; j < dist.size(); ++j)
-      r_i = std::max(r_i, dist(i, j));
-    max_edge_length = std::min(max_edge_length, r_i);
-  }
-#endif
-
   release_local.reset();
 
   return doit(std::move(dist), max_dimension, max_edge_length, homology_coeff_field);
@@ -150,6 +104,7 @@ py::list lower(py::object low_mat, int max_dimension, double max_edge_length, un
 
 template<class V, class T>
 py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int num_vertices, int max_dimension, T max_edge_length, unsigned homology_coeff_field) {
+  // Duplicate entries and self loops are forbidden
   auto is = is_.unchecked();
   auto js = js_.unchecked();
   auto fs = fs_.unchecked();
@@ -180,7 +135,7 @@ py::list sparse(py::array_t<V> is_, py::array_t<V> js_, py::array_t<T> fs_, int 
 py::list lower_to_coo(py::object low_mat, double max_edge_length) {
   // Cannot release the GIL since we keep accessing Python objects.
   // TODO: full_to_coo for numpy arrays?
-  // Should we compute the cone radius at the same time? (requires a vector of maxima)
+  // Should we compute the cone radius at the same time?
   std::vector<int> is, js;
   std::vector<double> fs;
   int rowi = 0;
@@ -231,13 +186,10 @@ PYBIND11_MODULE(_ripser, m) {
   py::bind_vector<V2f>(m, "VectorPairFloat" , py::buffer_protocol());
   py::bind_vector<V2d>(m, "VectorPairDouble", py::buffer_protocol());
   // Remove the default for max_dimension?
-  //m.def("_euclidean", euclidean<float>, py::arg("points").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<float>::infinity(), py::arg("homology_coeff_field") = 2);
-  //m.def("_euclidean", euclidean<double>, py::arg("points"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_full", full<float>, py::arg("matrix").noconvert(), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_full", full<double>, py::arg("matrix"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_lower", lower, py::arg("matrix"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   // We could do a version with long, but copying the arrays of integers shouldn't be too costly
-  // TODO doc: duplicate entries forbidden
   m.def("_sparse", sparse<int, float>, py::arg("row"), py::arg("col"), py::arg("data").noconvert(), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   m.def("_sparse", sparse<int, double>, py::arg("row"), py::arg("col"), py::arg("data"), py::arg("num_vertices"), py::arg("max_dimension") = std::numeric_limits<int>::max(), py::arg("max_edge_length") = std::numeric_limits<double>::infinity(), py::arg("homology_coeff_field") = 2);
   // Not directly an interface to Ripser...
@@ -246,5 +198,3 @@ PYBIND11_MODULE(_ripser, m) {
 }
 
 // We could also create a RipsComplex class, that allows looking at a simplex, querying its (co)boundary, etc. But I am not convinced it is worth the effort.
-
-// TODO: split into 3 files (sparse, full, lower) to help compilation.
