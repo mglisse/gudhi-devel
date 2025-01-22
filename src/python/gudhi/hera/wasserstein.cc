@@ -93,7 +93,6 @@ py::object wasserstein_distance(
       m(i, 1) = v2[i].get_id();
     }
     return py::make_tuple(dist, matching);
-
   }
 
   // bug in Hera, diagonal points are ignored and don't appear in matching_a_to_b_
@@ -102,6 +101,7 @@ py::object wasserstein_distance(
   for(auto p : diag2)
     if(p[0] == p[1]) { auto id = p.get_id(); res.matching_a_to_b_[-id-1] = id; }
 
+  // Convert to Gudhi's format
   py::array_t<int> matching({{ n1 + n2, 2 }}, nullptr);
   auto m = matching.mutable_unchecked();
   int cur = 0;
