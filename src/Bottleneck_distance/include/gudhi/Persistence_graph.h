@@ -33,7 +33,7 @@ namespace persistence_diagram {
  */
 class Persistence_graph {
 public:
-  /** \internal \brief Constructor taking 2 PersistenceDiagrams (concept) as parameters. */
+  /** \internal \brief Constructor taking 2 `PersistenceDiagram` (concept) as parameters. */
   template<typename Persistence_diagram1, typename Persistence_diagram2>
   Persistence_graph(const Persistence_diagram1& diag1, const Persistence_diagram2& diag2, double e);
   /** \internal \brief Is the given point from U the projection of a point in V ? */
@@ -60,25 +60,28 @@ public:
   Internal_point get_v_point(int v_point_index) const;
 
 private:
-  std::vector<Internal_point> u;
-  std::vector<Internal_point> v;
-  double b_alive;
+  // Indexes beyond u (resp. v) are used to represent the projections of v (resp. u) in order
+  std::vector<Internal_point> u; // finite points of diag1
+  std::vector<Internal_point> v; // finite points of diag2
+  double b_alive; // distance between the infinite parts
 };
 
 template<typename Persistence_diagram1, typename Persistence_diagram2>
 Persistence_graph::Persistence_graph(const Persistence_diagram1 &diag1,
                                      const Persistence_diagram2 &diag2, double e)
   : u(), v(), b_alive(0.) {
-  std::vector<double> u_alive;
-  std::vector<double> v_alive;
-  std::vector<double> u_nalive;
-  std::vector<double> v_nalive;
-  int u_inf = 0;
-  int v_inf = 0;
+  std::vector<double> u_alive; // [finite x for (x,+inf) in diag1]
+  std::vector<double> v_alive; // [finite x for (x,+inf) in diag1]
+  std::vector<double> u_nalive; // [finite x for (-inf,x) in diag1]
+  std::vector<double> v_nalive; // [finite x for (-inf,x) in diag2]
+  int u_inf = 0; // Number of (-inf,+inf) in diag1
+  int v_inf = 0; // Number of (-inf,+inf) in diag2
   double inf = std::numeric_limits<double>::infinity();
   double neginf = -inf;
 
   for (auto it = std::begin(diag1); it != std::end(diag1); ++it) {
+    // (+inf,+inf) and (-inf,-inf) are on the diagonal, ignore them
+    // Why not just std::get<0>(*it) != std::get<1>(*it), to ignore the diagonal?
     if (std::get<0>(*it) != inf && std::get<1>(*it) != neginf){
       if (std::get<0>(*it) == neginf && std::get<1>(*it) == inf)
         u_inf++;
@@ -110,10 +113,10 @@ Persistence_graph::Persistence_graph(const Persistence_diagram1 &diag1,
   } else {
     std::sort(u_alive.begin(), u_alive.end());
     std::sort(v_alive.begin(), v_alive.end());
-    std::sort(u_nalive.begin(), u_nalive.end());
-    std::sort(v_nalive.begin(), v_nalive.end());
     for (auto it_u = u_alive.cbegin(), it_v = v_alive.cbegin(); it_u != u_alive.cend(); ++it_u, ++it_v)
       b_alive = (std::max)(b_alive, std::fabs(*it_u - *it_v));
+    std::sort(u_nalive.begin(), u_nalive.end());
+    std::sort(v_nalive.begin(), v_nalive.end());
     for (auto it_u = u_nalive.cbegin(), it_v = v_nalive.cbegin(); it_u != u_nalive.cend(); ++it_u, ++it_v)
       b_alive = (std::max)(b_alive, std::fabs(*it_u - *it_v));
   }
@@ -138,6 +141,7 @@ inline int Persistence_graph::corresponding_point_in_v(int u_point_index) const 
 }
 
 inline double Persistence_graph::distance(int u_point_index, int v_point_index) const {
+  // FIXME: if v is on the diagonal and not u, why not return the distance from u to the diagonal?
   if (on_the_u_diagonal(u_point_index) && on_the_v_diagonal(v_point_index))
     return 0.;
   Internal_point p_u = get_u_point(u_point_index);

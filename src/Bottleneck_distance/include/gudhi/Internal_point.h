@@ -21,7 +21,7 @@ int null_point_index();
 /** \internal \typedef \brief Internal_point is the internal points representation, indexes used outside. */
 struct Internal_point {
   double vec[2];
-  int point_index;
+  int point_index; // Internal unique index, *not* the index in the input
 
   Internal_point() { }
 
